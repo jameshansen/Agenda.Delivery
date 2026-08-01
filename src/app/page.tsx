@@ -1,8 +1,11 @@
 import Link from "next/link";
 import RotatingWord from "@/components/RotatingWord";
-import { allModules } from "@/data/modules";
+import { getModules } from "@/db/queries";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const modules = await getModules();
   return (
     <main className="flex-1 w-full">
       {/* Hero */}
@@ -85,7 +88,7 @@ export default function Home() {
         </div>
 
         <ul className="mt-4 space-y-3">
-          {allModules.map((m) => (
+          {modules.map((m) => (
             <li
               key={m.slug}
               className="rounded-xl bg-row px-5 py-4 transition-colors hover:bg-row-hover"

@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { allModules } from "@/data/modules";
+import { getModules } from "@/db/queries";
+
+export const dynamic = "force-dynamic";
 
 // ponytail: styled placeholder map. Real interactive tiles (Leaflet + OSM,
 // driven by the geo.locate agent's lat/lng) land with the geodata in Phase 4-5.
@@ -14,7 +16,8 @@ const PINS = [
   { name: "City of Guelph", top: "60%", left: "88%" },
 ];
 
-export default function MapPage() {
+export default async function MapPage() {
+  const liveModules = await getModules();
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-8">
         <h1 className="text-3xl sm:text-4xl">Coverage map</h1>
@@ -75,7 +78,7 @@ export default function MapPage() {
           <div>
             <h2 className="text-lg">Live modules</h2>
             <ul className="mt-3 space-y-2">
-              {allModules.map((m) => (
+              {liveModules.map((m) => (
                 <li key={m.slug}>
                   <Link
                     href={`/module/${m.slug}`}

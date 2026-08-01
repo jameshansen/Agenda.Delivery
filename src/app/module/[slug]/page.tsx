@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import AgentLog from "@/components/AgentLog";
 import SubscribeCard from "@/components/SubscribeCard";
-import { getModule, type Health } from "@/data/modules";
+import { getModuleBySlug, type Health } from "@/db/queries";
+
+export const dynamic = "force-dynamic";
 
 const HEALTH: Record<Health, { label: string; className: string }> = {
   healthy: { label: "● healthy", className: "text-emerald-700 bg-emerald-500/10" },
@@ -16,7 +18,7 @@ export default async function ModulePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const m = getModule(slug);
+  const m = await getModuleBySlug(slug);
   if (!m) notFound();
 
   const health = HEALTH[m.health];
@@ -118,6 +120,7 @@ export default async function ModulePage({
             <section id="subscribe" className="scroll-mt-20">
               <SubscribeCard
                 moduleName={m.name}
+                moduleSlug={m.slug}
                 rss={`/module/${m.slug}/rss.xml`}
               />
             </section>
