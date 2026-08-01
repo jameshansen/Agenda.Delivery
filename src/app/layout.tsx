@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import SiteHeader from "@/components/SiteHeader";
+import Footer from "@/components/Footer";
 import "./globals.css";
 
 const gelica = localFont({
@@ -21,7 +23,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${gelica.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <SiteHeader />
+        {children}
+        <Footer />
+      </body>
     </html>
   );
 }

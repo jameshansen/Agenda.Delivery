@@ -21,7 +21,7 @@ export default function RotatingWord() {
 
   return (
     // Fixed width so the sentence doesn't reflow as words change length.
-    <span className="relative inline-block min-w-[9ch] text-left align-baseline text-rust">
+    <span className="relative inline-block min-w-[12ch] text-left align-baseline font-semibold text-rust">
       <span key={i} className="animate-fade-up inline-block">
         {WORDS[i]}
       </span>

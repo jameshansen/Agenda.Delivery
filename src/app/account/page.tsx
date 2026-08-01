@@ -1,5 +1,4 @@
 import Link from "next/link";
-import SiteHeader from "@/components/SiteHeader";
 import { allModules } from "@/data/modules";
 
 // ponytail: signed-in mock. Real accounts + auth arrive in Phase 3.
@@ -20,9 +19,7 @@ export default function AccountPage() {
   const byslug = Object.fromEntries(allModules.map((m) => [m.slug, m]));
 
   return (
-    <>
-      <SiteHeader />
-      <main className="mx-auto w-full max-w-4xl px-6 py-8">
+    <main className="mx-auto w-full max-w-4xl px-6 py-8">
         <h1 className="text-3xl sm:text-4xl">Welcome back, James</h1>
         <p className="mt-1 text-ink-soft">jameshansen.bc@gmail.com</p>
 
@@ -83,7 +80,6 @@ export default function AccountPage() {
             </ul>
           </section>
         </div>
-      </main>
-    </>
+    </main>
   );
 }

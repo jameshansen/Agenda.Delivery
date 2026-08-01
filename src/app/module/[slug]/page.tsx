@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import SiteHeader from "@/components/SiteHeader";
 import AgentLog from "@/components/AgentLog";
 import SubscribeCard from "@/components/SubscribeCard";
 import { getModule, type Health } from "@/data/modules";
@@ -23,9 +22,7 @@ export default async function ModulePage({
   const health = HEALTH[m.health];
 
   return (
-    <>
-      <SiteHeader />
-      <main className="mx-auto w-full max-w-5xl px-6 py-8">
+    <main className="mx-auto w-full max-w-5xl px-6 py-8">
         <Link href="/" className="text-sm text-ink-soft hover:text-green">
           ← all agendas
         </Link>
@@ -166,7 +163,6 @@ export default async function ModulePage({
             </div>
           </aside>
         </div>
-      </main>
-    </>
+    </main>
   );
 }

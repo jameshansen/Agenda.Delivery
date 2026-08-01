@@ -1,5 +1,4 @@
 import Link from "next/link";
-import SiteHeader from "@/components/SiteHeader";
 import { allModules } from "@/data/modules";
 
 // ponytail: styled placeholder map. Real interactive tiles (Leaflet + OSM,
@@ -17,9 +16,7 @@ const PINS = [
 
 export default function MapPage() {
   return (
-    <>
-      <SiteHeader />
-      <main className="mx-auto w-full max-w-5xl px-6 py-8">
+    <main className="mx-auto w-full max-w-5xl px-6 py-8">
         <h1 className="text-3xl sm:text-4xl">Coverage map</h1>
         <p className="mt-1 text-ink-soft">
           Every module places itself on the map. The spider is steadily filling
@@ -99,7 +96,6 @@ export default function MapPage() {
             </ul>
           </div>
         </div>
-      </main>
-    </>
+    </main>
   );
 }
