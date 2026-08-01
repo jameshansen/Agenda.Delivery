@@ -1,26 +1,39 @@
 @import "tailwindcss";
 
+/* Brand palette, sampled from the landing mockup. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f4f1e8;      /* warm cream background */
+  --ink: #1c1b16;        /* near-black text */
+  --ink-soft: #6f6c60;   /* muted grey (timestamps) */
+  --green: #4f8a2f;      /* ".delivery" bright green */
+  --green-dark: #3d5e2b; /* "agenda" dark olive green */
+  --rust: #a85d1a;       /* rotating category words */
+  --row: #e9edc9;        /* pale olive agenda row */
+  --row-hover: #e2e7ba;
+  --field: #dcdbd3;      /* search field fill */
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-green: var(--green);
+  --color-green-dark: var(--green-dark);
+  --color-rust: var(--rust);
+  --color-row: var(--row);
+  --color-row-hover: var(--row-hover);
+  --color-field: var(--field);
+  --font-serif: var(--font-gelica);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-gelica), Georgia, "Times New Roman", serif;
 }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(0.35em); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.45s ease-out; }

@@ -1,0 +1,45 @@
+Agenda.Delivery is an AI-enabled service people can use to get updates on various agendas around the world from council to non-profits
+
+It uses AI to summarize the agendas in the updates, and people can customize this with specific items they are interested in.
+
+For each keyword people have select it creates a specific summary for that keyword, that can be shared.
+
+We will create Agenda Modules for every council in Canada and then the United States, this will be a project in itself of spidering out, there is a page on the site showing this spider working and finding more.
+
+People have to create an account, but we offer login with google and others.
+
+In their account people can subscribe to agendas, by email or text (using twilio)
+
+Agenda "Modules":
+	-The modules are created using AI descriptions and hints (web addresses) and agenticly the scraping process is automatically determined, and repairs itself.
+	-It figures out it's geographical location using AI for the map.
+	-Modules can be created by us or users on their account with private/public sharing options. 
+	-They can be subscribed to via email or text (use twilio) or the RSS feed on the module
+	-Subscribing while logged in will show on the homepage recent updates
+	-AI:
+		- creates summary of significant things in Agendas to highlight 
+		- creates general AI summary
+		- creates summary of each custom keywords people are interested in (max 5) - when someone wants to view a keyword it will show others in the dropdown (5 people are following "cycling" for example)
+	-The agentic scraping process is fully viewable in the module, what the module had to do to successfully scrape and maintain itself if it breaks
+	-The module is self-verifying, if it breaks it must detect it and fix itself.
+
+Historical data store on S3 (scalable) - high compression to save space (strip out large images from PDFs etc)
+
+Need to architect cloud structure that is scalable, and figure out costs etc. for running this, most cost-effective way. currently just have a linux vps server.
+
+AI agents in use:
+	- Spider agent, finding more councils to add the modules list and initing the Scraper Create and Repair agent in a managable queue
+	- Scraper Create and Repair agent, creating the initial scraping logic, and repairing if the logic fails
+	- Checking agent, automated checking for new agendas and adapting checks to when agendas are typically released, to reduce traffic
+	- Summary agent, creating a general summary of the meeting
+	- Keyword summary agent, creating bespoke summaries based on keywords
+
+
+Keep in mind this is an open source project, and a demo project too, so we want to show off the agents working, doing their stuff, all viewable, the logs must look good "Agent is using tool X" for example in bubbles to look like how agentic coding agents look etc. - it's got to be impressive.
+
+We also need to see if we can encorporate the following technologies:
+- **Named cloud platforms — AWS, Kubernetes, along with Docker, docker-compose, nginx
+- **Testing — unit, integration, CI/CD
+- **Data engineering — PySpark, dbt, Databricks/Snowflake, Spark, ClickHouse/timeseries, Flink/Beam.
+- **Statically-typed backend at scale — Go or Scala.
+- **Observability by name — Datadog, OpenTelemetry, Prometheus/Grafana.
