@@ -13,6 +13,39 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   }),
   providers: [Google],
   pages: { signIn: "/login" },
+  session: {
+    // Use secure cookies in production
+    strategy: "database",
+  },
+  cookies: {
+    sessionToken: {
+      name: "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        // Set Secure flag only in production (HTTPS)
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+    callbackUrl: {
+      name: "next-auth.callback-url",
+      options: {
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+    csrfToken: {
+      name: "next-auth.csrf-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   callbacks: {
     session({ session, user }) {
       session.user.id = user.id;

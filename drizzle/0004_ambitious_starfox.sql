@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "meeting_module_date_title_uniq" ON "meeting" USING btree ("module_id","date","title");--> statement-breakpoint
+ALTER TABLE "spider_candidate" ADD CONSTRAINT "spider_candidate_url_unique" UNIQUE("url");

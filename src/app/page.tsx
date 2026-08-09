@@ -1,11 +1,57 @@
 import Link from "next/link";
 import RotatingWord from "@/components/RotatingWord";
-import { getModules } from "@/db/queries";
+import GeoLocate from "@/components/GeoLocate";
+import AutoSubmitSelect from "@/components/AutoSubmitSelect";
+import { getModulesPaged } from "@/db/queries";
+import type { Health } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
-  const modules = await getModules();
+const HEALTH_BADGE: Record<Health, { label: string; className: string }> = {
+  healthy: { label: "healthy", className: "bg-emerald-500/10 text-emerald-700" },
+  repairing: { label: "repairing", className: "bg-amber-500/10 text-amber-700" },
+  broken: { label: "broken", className: "bg-rose-500/10 text-rose-700" },
+};
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    page?: string;
+    province?: string;
+    near?: string;
+    q?: string;
+  }>;
+}) {
+  const sp = await searchParams;
+  const page = parseInt(sp.page ?? "1", 10) || 1;
+  const province = sp.province;
+  const query = sp.q;
+  const near = sp.near;
+
+  // Parse "near" param (lat,lng)
+  let lat: number | undefined;
+  let lng: number | undefined;
+  if (near) {
+    const [la, lo] = near.split(",").map(parseFloat);
+    if (!isNaN(la) && !isNaN(lo)) {
+      lat = la;
+      lng = lo;
+    }
+  }
+
+  const { items, total, provinces } = await getModulesPaged({
+    page,
+    perPage: 20,
+    province: province && province !== "all" ? province : undefined,
+    query,
+    lat,
+    lng,
+    radiusKm: lat != null ? 200 : undefined, // 200km default radius
+  });
+
+  const totalPages = Math.max(1, Math.ceil(total / 20));
+
   return (
     <main className="flex-1 w-full">
       {/* Hero */}
@@ -20,6 +66,8 @@ export default async function Home() {
 
         {/* Search */}
         <form
+          action="/"
+          method="get"
           className="mx-auto mt-10 flex max-w-xl items-center gap-2 rounded-full border border-black/10 bg-white/70 p-2 pl-5 shadow-sm transition-colors focus-within:border-green/50"
           role="search"
         >
@@ -36,6 +84,8 @@ export default async function Home() {
           </svg>
           <input
             type="search"
+            name="q"
+            defaultValue={query}
             aria-label="Search agendas"
             placeholder="Search councils, committees, organizations…"
             className="flex-1 bg-transparent text-ink outline-none placeholder:text-ink-soft"
@@ -60,13 +110,7 @@ export default async function Home() {
         {/* Stats */}
         <div className="mx-auto mt-12 flex max-w-2xl flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm text-ink-soft">
           <span>
-            <strong className="text-ink">214</strong> councils monitored
-          </span>
-          <span>
-            <strong className="text-ink">3</strong> provinces live
-          </span>
-          <span>
-            <strong className="text-ink">11,904</strong> agendas tracked
+            <strong className="text-ink">{total}</strong> councils monitored
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
@@ -75,70 +119,163 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Newest agendas */}
+      {/* Filters bar + council list */}
       <section className="mx-auto max-w-3xl px-6 pb-24">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg">newest agendas monitored</h2>
-          <Link
-            href="/map"
-            className="text-sm text-ink-soft hover:text-green"
-          >
-            view all →
-          </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-lg">councils monitored</h2>
+
+          {/* Province filter */}
+          <form action="/" method="get" className="flex items-center gap-2">
+            {query && <input type="hidden" name="q" value={query} />}
+            {near && <input type="hidden" name="near" value={near} />}
+            <AutoSubmitSelect
+              name="province"
+              defaultValue={province ?? "all"}
+              options={[
+                { value: "all", label: "all regions" },
+                ...provinces.map((p) => ({ value: p, label: p })),
+              ]}
+            />
+          </form>
+
+          <div className="ml-auto">
+            <GeoLocate label="councils near me" />
+          </div>
         </div>
 
+        {/* Active filter indicators */}
+        {(province || query || near) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-soft">
+            <span>showing:</span>
+            {near && (
+              <span className="rounded-full bg-green/10 px-2 py-0.5 text-xs text-green-dark">
+                within 200km of you
+              </span>
+            )}
+            {province && province !== "all" && (
+              <span className="rounded-full bg-rust/10 px-2 py-0.5 text-xs text-rust">
+                {province}
+              </span>
+            )}
+            {query && (
+              <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs">
+                &ldquo;{query}&rdquo;
+              </span>
+            )}
+            <Link href="/" className="text-xs underline underline-offset-2 hover:text-green">
+              clear all
+            </Link>
+          </div>
+        )}
+
+        {/* Results */}
+        <p className="mt-3 text-sm text-ink-soft">
+          {items.length} of {total} council{total !== 1 ? "s" : ""}
+        </p>
+
         <ul className="mt-4 space-y-3">
-          {modules.map((m) => (
-            <li
-              key={m.slug}
-              className="rounded-xl bg-row px-5 py-4 transition-colors hover:bg-row-hover"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Link
-                      href={`/module/${m.slug}`}
-                      className="text-lg font-semibold hover:text-green"
-                    >
-                      {m.name}
-                    </Link>
-                    {m.health === "healthy" ? (
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700">
-                        healthy
+          {items.map((m) => {
+            const badge = HEALTH_BADGE[m.health];
+            return (
+              <li
+                key={m.slug}
+                className="rounded-xl bg-row px-5 py-4 transition-colors hover:bg-row-hover"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/module/${m.slug}`}
+                        className="text-lg font-semibold hover:text-green"
+                      >
+                        {m.name}
+                      </Link>
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${badge.className}`}>
+                        {badge.label}
                       </span>
-                    ) : (
-                      <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700">
-                        self-repaired
-                      </span>
+                    </div>
+                    <div className="mt-0.5 text-sm text-ink-soft">
+                      {m.region}
+                      {m.latestMeetingDate && (
+                        <span className="text-ink-soft/60">
+                          {" "}· latest council meeting {m.latestMeetingDate}
+                        </span>
+                      )}
+                    </div>
+                    {m.latestMeetingTitle && (
+                      <div className="mt-0.5 truncate text-sm text-ink-soft/80">
+                        <i className="fa-solid fa-file-lines mr-1 text-rust/60" />
+                        {m.latestMeetingTitle}
+                      </div>
                     )}
                   </div>
-                  <div className="mt-0.5 text-sm text-ink-soft">
-                    {m.region} · Last updated {m.lastUpdated} · {m.followers}{" "}
-                    followers
+                  <div className="flex shrink-0 items-center gap-5 text-sm">
+                    <Link href={`/module/${m.slug}`} className="hover:text-green">
+                      View
+                    </Link>
+                    <Link
+                      href={`/module/${m.slug}#subscribe`}
+                      className="hover:text-green"
+                    >
+                      Subscribe
+                    </Link>
                   </div>
                 </div>
-                <div className="flex items-center gap-5 text-sm">
-                  <Link href={`/module/${m.slug}`} className="hover:text-green">
-                    View
-                  </Link>
-                  <Link
-                    href={`/module/${m.slug}#subscribe`}
-                    className="hover:text-green"
-                  >
-                    Subscribe
-                  </Link>
-                  <Link
-                    href={`/module/${m.slug}#summary`}
-                    className="hover:text-green"
-                  >
-                    Summarize
-                  </Link>
-                </div>
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <nav className="mt-8 flex items-center justify-center gap-2">
+            {page > 1 && (
+              <Link
+                href={`/?${buildQuery({ page: page - 1, province, query, near })}`}
+                className="rounded-lg border border-black/15 px-3 py-1.5 text-sm hover:border-green hover:text-green"
+              >
+                <i className="fa-solid fa-chevron-left" />
+              </Link>
+            )}
+            <span className="px-3 py-1.5 text-sm text-ink-soft">
+              page {page} of {totalPages}
+            </span>
+            {page < totalPages && (
+              <Link
+                href={`/?${buildQuery({ page: page + 1, province, query, near })}`}
+                className="rounded-lg border border-black/15 px-3 py-1.5 text-sm hover:border-green hover:text-green"
+              >
+                <i className="fa-solid fa-chevron-right" />
+              </Link>
+            )}
+          </nav>
+        )}
+
+        {items.length === 0 && (
+          <p className="mt-6 text-sm text-ink-soft">
+            No councils found. Try a different search or{" "}
+            <Link href="/" className="text-green hover:underline">
+              clear filters
+            </Link>
+            .
+          </p>
+        )}
       </section>
     </main>
   );
+}
+
+/** Build a URL query string from the filter params. */
+function buildQuery(opts: {
+  page: number;
+  province?: string;
+  query?: string;
+  near?: string;
+}): string {
+  const params = new URLSearchParams();
+  if (opts.page > 1) params.set("page", String(opts.page));
+  if (opts.province && opts.province !== "all") params.set("province", opts.province);
+  if (opts.query) params.set("q", opts.query);
+  if (opts.near) params.set("near", opts.near);
+  return params.toString();
 }

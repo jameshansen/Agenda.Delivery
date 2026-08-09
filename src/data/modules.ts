@@ -6,6 +6,8 @@ export type Meeting = {
   title: string;
   kind: string;
   pages: number;
+  pdfUrl: string;
+  meetingUrl: string;
 };
 
 export type KeywordSummary = {
@@ -40,6 +42,8 @@ export type ModuleDetail = {
   keywords: KeywordSummary[];
   meetings: Meeting[];
   agentLog: AgentEvent[];
+  lat?: number;
+  lng?: number;
 };
 
 const MODULES: Record<string, ModuleDetail> = {
@@ -52,6 +56,8 @@ const MODULES: Record<string, ModuleDetail> = {
     nextExpected: "July 8, 2026",
     followers: 184,
     health: "healthy",
+    lat: 49.1045,
+    lng: -122.6587,
     summary:
       "The June 24 Regular Council meeting was dominated by the Willoughby Community Plan amendment, which adds 1,900 units of missing-middle housing near the future SkyTrain alignment. Council also awarded the 200 Street cycling corridor contract and deferred a decision on short-term rental licensing to the July committee of the whole.",
     highlights: [
@@ -83,12 +89,7 @@ const MODULES: Record<string, ModuleDetail> = {
           "Nicomekl floodplain trail extension received design funding. No new park acquisitions this cycle.",
       },
     ],
-    meetings: [
-      { date: "June 24, 2026", title: "Regular Council Meeting", kind: "Council", pages: 312 },
-      { date: "June 16, 2026", title: "Committee of the Whole", kind: "Committee", pages: 88 },
-      { date: "June 9, 2026", title: "Regular Council Meeting", kind: "Council", pages: 274 },
-      { date: "May 26, 2026", title: "Public Hearing", kind: "Hearing", pages: 41 },
-    ],
+    meetings: [],
     agentLog: [
       { agent: "Checking Agent", action: "Detected the June 24 agenda was likely posted (agendas land ~4 days before meetings).", tool: "schedule.predict", detail: "confidence 0.91 → poll now" },
       { agent: "Checking Agent", action: "Found a new agenda package linked on the council meetings page.", tool: "http.get", detail: "GET /council-meetings.aspx → 200" },
@@ -108,7 +109,9 @@ const MODULES: Record<string, ModuleDetail> = {
     lastUpdated: "June 18, 2026",
     nextExpected: "July 7, 2026",
     followers: 96,
-    health: "repairing",
+    health: "healthy",
+    lat: 49.1036,
+    lng: -122.6574,
     summary:
       "The City's agenda portal changed its URL structure on June 17, which broke the original scraper. The Scraper Repair Agent detected the failure, re-discovered the new agenda listing, and rebuilt the extraction logic within minutes. The June 18 Regular Council meeting focused on the Downtown Master Plan and a new pay-parking pilot on Fraser Highway.",
     highlights: [
@@ -132,11 +135,7 @@ const MODULES: Record<string, ModuleDetail> = {
           "A 12-month pay-parking pilot was approved for the Fraser Highway core. Revenue is earmarked for downtown streetscape improvements.",
       },
     ],
-    meetings: [
-      { date: "June 18, 2026", title: "Regular Council Meeting", kind: "Council", pages: 198 },
-      { date: "June 2, 2026", title: "Regular Council Meeting", kind: "Council", pages: 210 },
-      { date: "May 20, 2026", title: "Special Council Meeting", kind: "Council", pages: 33 },
-    ],
+    meetings: [],
     agentLog: [
       { agent: "Checking Agent", action: "Scheduled poll returned a 404 where the agenda list used to be.", tool: "http.get", detail: "GET /council-meetings → 404" },
       { agent: "Checking Agent", action: "Flagged the module as broken and paged the repair agent.", tool: "verify.selfcheck", detail: "2/6 checks failed" },

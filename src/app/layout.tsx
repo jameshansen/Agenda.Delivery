@@ -23,6 +23,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${gelica.variable} h-full antialiased`}>
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+          crossOrigin="anonymous"
+          referrerPolicy="no-referrer"
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <SiteHeader />
         {children}

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getSubscriptionsForUser } from "@/db/queries";
 import { signOutAction } from "@/app/actions";
+import UnsubscribeButton from "@/components/UnsubscribeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -53,9 +54,12 @@ export default async function AccountPage() {
                   >
                     {s.name}
                   </Link>
-                  <span className="rounded-full bg-green/10 px-2 py-0.5 text-xs text-green-dark">
-                    by {s.channel}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="rounded-full bg-green/10 px-2 py-0.5 text-xs text-green-dark">
+                      by {s.channel}
+                    </span>
+                    <UnsubscribeButton slug={s.slug} name={s.name} />
+                  </div>
                 </li>
               ))}
             </ul>

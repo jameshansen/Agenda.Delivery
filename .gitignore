@@ -37,6 +37,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# python (agents / orchestrator / renderer / browser containers)
+__pycache__/
+*.pyc
+
+# stray local logs
+dev-server*.log
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

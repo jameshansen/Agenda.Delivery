@@ -1,0 +1,57 @@
+Task (1)
+-----------
+We need to restructure this project into a docker-compose oriented cloud project where just running docker-compose up deploys it
+
+Create a module for each Agent so it runs in it's own docker module behind an nginx proxy using Python and Gunicorn, not typescript.
+
+Agent to Ollama Cloud API needs to handled with a shared utility included in the module which also handles the API key.
+
+Create an Orchestrator module for managing all of the Agents and handling communication between them - Use redis for this
+
+The UI is also it's own docker module using Typescript.
+
+The Database is it's own docker module.
+
+Scrap drizzle, as when the agents become their own containers they can't use Drizzle.
+
+The orchestrator is not a simple pipeline. It manages queues, conditional flows, retries, and parallel work. Some agents trigger others, some run independently on a schedule, some fan out. That logic lives in the orchestrator, not in the agents.
+
+The UI does not talk to the agents directly, and only the orchestrator if it needs to. It reads from the shared database. Agents write events and results there. The UI is a reader.
+
+Redis is the glue between agents and the orchestrator. Jobs, events, and triggers all flow through it.
+
+Each agent in its own container means you can read and maintain one agent without touching the others. That simplicity and maintainability is worth a few extra containers.
+
+For "each agenda as a module," a council is a module (you subscribe to it). A meeting is a row inside that module (the agenda you receive). Both live in Postgres. No need for a container per agenda.
+
+docker-compose up starts: nginx, ui, orchestrator, each agent container, redis, postgres.
+
+The system is now much more maintainable and easier to grasp and explore.
+
+Task (2)
+-----------
+We need an admin panel for managing the site. The agent parameters and logic flow/prompts needs to be visible and editable in the admin panel along with scheduling and the list of councils the spider is going to try and find (and the source it found it on). The spider especially needs an admin page to track what it is doing.
+
+We also need a dummy agenda module that is just a seeded example of what the UI looks like for reference.
+
+The Agent page needs to show exactly how each agent is called. It shouldn't come out of nowhere, but say "task started by *scheduled update*" etc.
+
+The agents page needs to be made more usable and also is crucial for users to understand how it is working and expanded appropriately. Not only is this site a useful tool, it's also a demo project for me.
+
+Task (3)
+-----------
+We need to make sure it works. 
+
+Make sure all 15 of the current test councils on there are our test bed for getting them to work automatically using the agents and their tools. If they don't work, the agents/tools need to be adjusted to work.
+
+Make sure the agenda's the scrapers retrieve really IS the latest agenda. Verify logically, and if that passes, verify again with Claude for Chrome browsing to find it.
+
+We need to make it feel solid. You go to a module, you need to be able to clearly see what it has done, how it's tried to do it, and so on.
+
+Task (4)
+-----------
+Full UI review. Make sure there's no dummy data visible. Make it usable - so no long lists or logs that overload the browser window. Can use Claude for Chrome for this.
+
+Task (5)
+-----------
+Add 5 more councils. Make sure these work with the agent flow and adjust. Report what happened and wait for further instructions.

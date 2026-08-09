@@ -1,0 +1,65 @@
+# ─────────────────────────────────────────────────────────────
+# CI — lint, type-check, build on every push
+# ─────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agenda
+          POSTGRES_PASSWORD: agenda
+          POSTGRES_DB: agenda
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build
+        env:
+          DATABASE_URL: postgresql://agenda:agenda@localhost:5432/agenda
+          AUTH_SECRET: ci-test-secret-not-for-prod
+        run: npm run build
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgresql://agenda:agenda@localhost:5432/agenda
+        run: npm run db:migrate
+
+      - name: Seed
+        env:
+          DATABASE_URL: postgresql://agenda:agenda@localhost:5432/agenda
+        run: npm run db:seed

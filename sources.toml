@@ -1,0 +1,1328 @@
+# agenda.delivery — Council Source Registry
+#
+# This file is the single source of truth for the list of councils,
+# committees, and organizations that agenda.delivery monitors.
+#
+# The Spider Agent downloads this file at startup and whenever it
+# changes (checked via ETag / Last-Modified).  Each source becomes
+# a spider_candidate in the queue.
+#
+# Format: TOML array of tables.  Each [[source]] entry has:
+#   name        — official name of the council / body
+#   url         — website root (the spider will crawl from here)
+#   region      — human-readable location ("City, State/Province")
+#   country     — ISO 3166-1 alpha-2 code (CA, US, …)
+#
+# To add a council, append a [[source]] block.  The file is public
+# and version-controlled — anyone can submit a PR to add their council.
+#
+# ── Primary registries (authoritative, machine-readable) ──
+#
+#   Canada  — Statistics Canada, Census Subdivisions
+#             https://www150.statcan.gc.ca/n1/pub/92-195-x/92-195-x2021001-eng.htm
+#
+#   USA     — US Census Bureau, Incorporated Places
+#             https://www.census.gov/data/tables/2023/demo/popest/2023-cities-and-towns-totals.html
+#
+# The hand-curated entries below were derived from those public
+# registries.  Over time the spider will replace them with live
+# data pulled directly from the registry APIs.
+
+# ════════════════════════════════════════════════════════════
+# Canada
+# ════════════════════════════════════════════════════════════
+
+# — British Columbia —
+[[source]]
+name = "City of Vancouver"
+url = "https://vancouver.ca"
+region = "Vancouver, British Columbia"
+country = "CA"
+
+[[source]]
+name = "Township of Langley"
+url = "https://www.tol.ca"
+region = "Langley, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Langley"
+url = "https://www.langleycity.ca"
+region = "Langley, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Surrey"
+url = "https://www.surrey.ca"
+region = "Surrey, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Burnaby"
+url = "https://www.burnaby.ca"
+region = "Burnaby, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Richmond"
+url = "https://www.richmond.ca"
+region = "Richmond, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Coquitlam"
+url = "https://www.coquitlam.ca"
+region = "Coquitlam, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Victoria"
+url = "https://www.victoria.ca"
+region = "Victoria, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Kelowna"
+url = "https://www.kelowna.ca"
+region = "Kelowna, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Kamloops"
+url = "https://www.kamloops.ca"
+region = "Kamloops, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Nanaimo"
+url = "https://www.nanaimo.ca"
+region = "Nanaimo, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Prince George"
+url = "https://www.princegeorge.ca"
+region = "Prince George, British Columbia"
+country = "CA"
+
+[[source]]
+name = "District of Saanich"
+url = "https://www.saanich.ca"
+region = "Saanich, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of New Westminster"
+url = "https://www.newwestcity.ca"
+region = "New Westminster, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of North Vancouver"
+url = "https://www.cnv.org"
+region = "North Vancouver, British Columbia"
+country = "CA"
+
+[[source]]
+name = "District of North Vancouver"
+url = "https://www.dnv.org"
+region = "North Vancouver, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of West Vancouver"
+url = "https://westvancouver.ca"
+region = "West Vancouver, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Port Moody"
+url = "https://www.portmoody.ca"
+region = "Port Moody, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Abbotsford"
+url = "https://www.abbotsford.ca"
+region = "Abbotsford, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Chilliwack"
+url = "https://www.chilliwack.ca"
+region = "Chilliwack, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Maple Ridge"
+url = "https://www.mapleridge.ca"
+region = "Maple Ridge, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Pitt Meadows"
+url = "https://www.pittmeadows.ca"
+region = "Pitt Meadows, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of White Rock"
+url = "https://www.whiterockcity.ca"
+region = "White Rock, British Columbia"
+country = "CA"
+
+[[source]]
+name = "Township of Esquimalt"
+url = "https://www.esquimalt.ca"
+region = "Esquimalt, British Columbia"
+country = "CA"
+
+[[source]]
+name = "City of Colwood"
+url = "https://www.colwood.ca"
+region = "Colwood, British Columbia"
+country = "CA"
+
+# — Alberta —
+[[source]]
+name = "City of Calgary"
+url = "https://www.calgary.ca"
+region = "Calgary, Alberta"
+country = "CA"
+
+[[source]]
+name = "City of Edmonton"
+url = "https://www.edmonton.ca"
+region = "Edmonton, Alberta"
+country = "CA"
+
+[[source]]
+name = "City of Red Deer"
+url = "https://www.reddeer.ca"
+region = "Red Deer, Alberta"
+country = "CA"
+
+[[source]]
+name = "City of Lethbridge"
+url = "https://www.lethbridge.ca"
+region = "Lethbridge, Alberta"
+country = "CA"
+
+[[source]]
+name = "City of St. Albert"
+url = "https://www.stalbert.ca"
+region = "St. Albert, Alberta"
+country = "CA"
+
+[[source]]
+name = "City of Medicine Hat"
+url = "https://www.medicinehat.ca"
+region = "Medicine Hat, Alberta"
+country = "CA"
+
+[[source]]
+name = "City of Grande Prairie"
+url = "https://www.cityofgp.com"
+region = "Grande Prairie, Alberta"
+country = "CA"
+
+[[source]]
+name = "City of Airdrie"
+url = "https://www.airdrie.ca"
+region = "Airdrie, Alberta"
+country = "CA"
+
+[[source]]
+name = "City of Spruce Grove"
+url = "https://www.sprucegrove.org"
+region = "Spruce Grove, Alberta"
+country = "CA"
+
+[[source]]
+name = "Town of Banff"
+url = "https://www.banff.ca"
+region = "Banff, Alberta"
+country = "CA"
+
+# — Saskatchewan —
+[[source]]
+name = "City of Saskatoon"
+url = "https://www.saskatoon.ca"
+region = "Saskatoon, Saskatchewan"
+country = "CA"
+
+[[source]]
+name = "City of Regina"
+url = "https://www.regina.ca"
+region = "Regina, Saskatchewan"
+country = "CA"
+
+[[source]]
+name = "City of Moose Jaw"
+url = "https://www.moosejaw.ca"
+region = "Moose Jaw, Saskatchewan"
+country = "CA"
+
+[[source]]
+name = "City of Prince Albert"
+url = "https://www.citypa.ca"
+region = "Prince Albert, Saskatchewan"
+country = "CA"
+
+# — Manitoba —
+[[source]]
+name = "City of Winnipeg"
+url = "https://www.winnipeg.ca"
+region = "Winnipeg, Manitoba"
+country = "CA"
+
+[[source]]
+name = "City of Brandon"
+url = "https://www.brandon.ca"
+region = "Brandon, Manitoba"
+country = "CA"
+
+# — Ontario —
+[[source]]
+name = "City of Toronto"
+url = "https://www.toronto.ca"
+region = "Toronto, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Ottawa"
+url = "https://ottawa.ca"
+region = "Ottawa, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Mississauga"
+url = "https://www.mississauga.ca"
+region = "Mississauga, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Brampton"
+url = "https://www.brampton.ca"
+region = "Brampton, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Hamilton"
+url = "https://www.hamilton.ca"
+region = "Hamilton, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of London"
+url = "https://london.ca"
+region = "London, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Markham"
+url = "https://www.markham.ca"
+region = "Markham, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Vaughan"
+url = "https://www.vaughan.ca"
+region = "Vaughan, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Kitchener"
+url = "https://www.kitchener.ca"
+region = "Kitchener, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Windsor"
+url = "https://www.citywindsor.ca"
+region = "Windsor, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Richmond Hill"
+url = "https://www.richmondhill.ca"
+region = "Richmond Hill, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Oakville"
+url = "https://www.oakville.ca"
+region = "Oakville, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Burlington"
+url = "https://www.burlington.ca"
+region = "Burlington, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Greater Sudbury"
+url = "https://www.greatersudbury.ca"
+region = "Greater Sudbury, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Oshawa"
+url = "https://www.oshawa.ca"
+region = "Oshawa, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Barrie"
+url = "https://www.barrie.ca"
+region = "Barrie, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Guelph"
+url = "https://guelph.ca"
+region = "Guelph, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Cambridge"
+url = "https://www.cambridge.ca"
+region = "Cambridge, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Kingston"
+url = "https://www.cityofkingston.ca"
+region = "Kingston, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Whitby"
+url = "https://www.whitby.ca"
+region = "Whitby, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Ajax"
+url = "https://www.ajax.ca"
+region = "Ajax, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of St. Catharines"
+url = "https://www.stcatharines.ca"
+region = "St. Catharines, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Niagara Falls"
+url = "https://niagarafalls.ca"
+region = "Niagara Falls, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Peterborough"
+url = "https://www.peterborough.ca"
+region = "Peterborough, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Thunder Bay"
+url = "https://www.thunderbay.ca"
+region = "Thunder Bay, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Waterloo"
+url = "https://www.waterloo.ca"
+region = "Waterloo, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Brantford"
+url = "https://www.brantford.ca"
+region = "Brantford, Ontario"
+country = "CA"
+
+[[source]]
+name = "City of Chatham-Kent"
+url = "https://www.chatham-kent.ca"
+region = "Chatham-Kent, Ontario"
+country = "CA"
+
+# — Quebec —
+[[source]]
+name = "Ville de Montreal"
+url = "https://montreal.ca"
+region = "Montreal, Quebec"
+country = "CA"
+
+[[source]]
+name = "Ville de Quebec"
+url = "https://www.ville.quebec.qc.ca"
+region = "Quebec City, Quebec"
+country = "CA"
+
+[[source]]
+name = "Ville de Laval"
+url = "https://www.laval.ca"
+region = "Laval, Quebec"
+country = "CA"
+
+[[source]]
+name = "Ville de Gatineau"
+url = "https://www.gatineau.ca"
+region = "Gatineau, Quebec"
+country = "CA"
+
+[[source]]
+name = "Ville de Longueuil"
+url = "https://www.longueuil.quebec"
+region = "Longueuil, Quebec"
+country = "CA"
+
+[[source]]
+name = "Ville de Sherbrooke"
+url = "https://www.sherbrooke.ca"
+region = "Sherbrooke, Quebec"
+country = "CA"
+
+[[source]]
+name = "Ville de Saguenay"
+url = "https://ville.saguenay.ca"
+region = "Saguenay, Quebec"
+country = "CA"
+
+[[source]]
+name = "Ville de Levis"
+url = "https://www.ville.levis.qc.ca"
+region = "Levis, Quebec"
+country = "CA"
+
+[[source]]
+name = "Ville de Trois-Rivieres"
+url = "https://www.ville.troisrivieres.qc.ca"
+region = "Trois-Rivieres, Quebec"
+country = "CA"
+
+# — New Brunswick —
+[[source]]
+name = "City of Fredericton"
+url = "https://www.fredericton.ca"
+region = "Fredericton, New Brunswick"
+country = "CA"
+
+[[source]]
+name = "City of Moncton"
+url = "https://www.moncton.ca"
+region = "Moncton, New Brunswick"
+country = "CA"
+
+[[source]]
+name = "City of Saint John"
+url = "https://www.saintjohn.ca"
+region = "Saint John, New Brunswick"
+country = "CA"
+
+# — Nova Scotia —
+[[source]]
+name = "Halifax Regional Municipality"
+url = "https://www.halifax.ca"
+region = "Halifax, Nova Scotia"
+country = "CA"
+
+[[source]]
+name = "Cape Breton Regional Municipality"
+url = "https://www.cbrm.ns.ca"
+region = "Cape Breton, Nova Scotia"
+country = "CA"
+
+# — Prince Edward Island —
+[[source]]
+name = "City of Charlottetown"
+url = "https://www.charlottetown.ca"
+region = "Charlottetown, Prince Edward Island"
+country = "CA"
+
+[[source]]
+name = "City of Summerside"
+url = "https://www.city.summerside.pe.ca"
+region = "Summerside, Prince Edward Island"
+country = "CA"
+
+# — Newfoundland and Labrador —
+[[source]]
+name = "City of St. John's"
+url = "https://www.stjohns.ca"
+region = "St. John's, Newfoundland and Labrador"
+country = "CA"
+
+# — Yukon —
+[[source]]
+name = "City of Whitehorse"
+url = "https://www.whitehorse.ca"
+region = "Whitehorse, Yukon"
+country = "CA"
+
+# — Northwest Territories —
+[[source]]
+name = "City of Yellowknife"
+url = "https://www.yellowknife.ca"
+region = "Yellowknife, Northwest Territories"
+country = "CA"
+
+
+# ════════════════════════════════════════════════════════════
+# United States
+# ════════════════════════════════════════════════════════════
+
+# — Major cities —
+[[source]]
+name = "New York City Council"
+url = "https://council.nyc.gov"
+region = "New York, New York"
+country = "US"
+
+[[source]]
+name = "Los Angeles City Council"
+url = "https://www.lacity.org"
+region = "Los Angeles, California"
+country = "US"
+
+[[source]]
+name = "Chicago City Council"
+url = "https://www.chicago.gov"
+region = "Chicago, Illinois"
+country = "US"
+
+[[source]]
+name = "Houston City Council"
+url = "https://www.houstontx.gov"
+region = "Houston, Texas"
+country = "US"
+
+[[source]]
+name = "Phoenix City Council"
+url = "https://www.phoenix.gov"
+region = "Phoenix, Arizona"
+country = "US"
+
+[[source]]
+name = "Philadelphia City Council"
+url = "https://phlcouncil.com"
+region = "Philadelphia, Pennsylvania"
+country = "US"
+
+[[source]]
+name = "San Antonio City Council"
+url = "https://www.sanantonio.gov"
+region = "San Antonio, Texas"
+country = "US"
+
+[[source]]
+name = "San Diego City Council"
+url = "https://www.sandiego.gov"
+region = "San Diego, California"
+country = "US"
+
+[[source]]
+name = "Dallas City Council"
+url = "https://dallascityhall.com"
+region = "Dallas, Texas"
+country = "US"
+
+[[source]]
+name = "San Jose City Council"
+url = "https://www.sanjoseca.gov"
+region = "San Jose, California"
+country = "US"
+
+[[source]]
+name = "Austin City Council"
+url = "https://www.austintexas.gov"
+region = "Austin, Texas"
+country = "US"
+
+[[source]]
+name = "Jacksonville City Council"
+url = "https://www.coj.net"
+region = "Jacksonville, Florida"
+country = "US"
+
+[[source]]
+name = "Fort Worth City Council"
+url = "https://www.fortworthtexas.gov"
+region = "Fort Worth, Texas"
+country = "US"
+
+[[source]]
+name = "Columbus City Council"
+url = "https://www.columbus.gov"
+region = "Columbus, Ohio"
+country = "US"
+
+[[source]]
+name = "Charlotte City Council"
+url = "https://www.charlottenc.gov"
+region = "Charlotte, North Carolina"
+country = "US"
+
+[[source]]
+name = "Indianapolis City Council"
+url = "https://www.indy.gov"
+region = "Indianapolis, Indiana"
+country = "US"
+
+[[source]]
+name = "San Francisco Board of Supervisors"
+url = "https://sfbos.org"
+region = "San Francisco, California"
+country = "US"
+
+[[source]]
+name = "Seattle City Council"
+url = "https://www.seattle.gov"
+region = "Seattle, Washington"
+country = "US"
+
+[[source]]
+name = "Denver City Council"
+url = "https://www.denvergov.org"
+region = "Denver, Colorado"
+country = "US"
+
+[[source]]
+name = "Boston City Council"
+url = "https://www.boston.gov"
+region = "Boston, Massachusetts"
+country = "US"
+
+[[source]]
+name = "El Paso City Council"
+url = "https://www.elpasotexas.gov"
+region = "El Paso, Texas"
+country = "US"
+
+[[source]]
+name = "Nashville Metro Council"
+url = "https://www.nashville.gov"
+region = "Nashville, Tennessee"
+country = "US"
+
+[[source]]
+name = "Detroit City Council"
+url = "https://www.detroitmi.gov"
+region = "Detroit, Michigan"
+country = "US"
+
+[[source]]
+name = "Oklahoma City Council"
+url = "https://www.okc.gov"
+region = "Oklahoma City, Oklahoma"
+country = "US"
+
+[[source]]
+name = "Portland City Council"
+url = "https://www.portland.gov"
+region = "Portland, Oregon"
+country = "US"
+
+[[source]]
+name = "Las Vegas City Council"
+url = "https://www.lasvegasnevada.gov"
+region = "Las Vegas, Nevada"
+country = "US"
+
+[[source]]
+name = "Memphis City Council"
+url = "https://www.memphis.gov"
+region = "Memphis, Tennessee"
+country = "US"
+
+[[source]]
+name = "Louisville Metro Council"
+url = "https://louisvilleky.gov"
+region = "Louisville, Kentucky"
+country = "US"
+
+[[source]]
+name = "Baltimore City Council"
+url = "https://www.baltimorecity.gov"
+region = "Baltimore, Maryland"
+country = "US"
+
+[[source]]
+name = "Milwaukee Common Council"
+url = "https://www.milwaukee.gov"
+region = "Milwaukee, Wisconsin"
+country = "US"
+
+[[source]]
+name = "Albuquerque City Council"
+url = "https://www.cabq.gov"
+region = "Albuquerque, New Mexico"
+country = "US"
+
+[[source]]
+name = "Tucson City Council"
+url = "https://www.tucsonaz.gov"
+region = "Tucson, Arizona"
+country = "US"
+
+[[source]]
+name = "Fresno City Council"
+url = "https://www.fresno.gov"
+region = "Fresno, California"
+country = "US"
+
+[[source]]
+name = "Sacramento City Council"
+url = "https://www.cityofsacramento.gov"
+region = "Sacramento, California"
+country = "US"
+
+[[source]]
+name = "Kansas City Council"
+url = "https://www.kcmo.gov"
+region = "Kansas City, Missouri"
+country = "US"
+
+[[source]]
+name = "Mesa City Council"
+url = "https://www.mesaaz.gov"
+region = "Mesa, Arizona"
+country = "US"
+
+[[source]]
+name = "Atlanta City Council"
+url = "https://www.atlantaga.gov"
+region = "Atlanta, Georgia"
+country = "US"
+
+[[source]]
+name = "Omaha City Council"
+url = "https://www.cityofomaha.org"
+region = "Omaha, Nebraska"
+country = "US"
+
+[[source]]
+name = "Colorado Springs City Council"
+url = "https://coloradosprings.gov"
+region = "Colorado Springs, Colorado"
+country = "US"
+
+[[source]]
+name = "Raleigh City Council"
+url = "https://www.raleighnc.gov"
+region = "Raleigh, North Carolina"
+country = "US"
+
+[[source]]
+name = "Miami City Council"
+url = "https://www.miamigov.com"
+region = "Miami, Florida"
+country = "US"
+
+[[source]]
+name = "Long Beach City Council"
+url = "https://www.longbeach.gov"
+region = "Long Beach, California"
+country = "US"
+
+[[source]]
+name = "Virginia Beach City Council"
+url = "https://www.vbgov.com"
+region = "Virginia Beach, Virginia"
+country = "US"
+
+[[source]]
+name = "Oakland City Council"
+url = "https://www.oaklandca.gov"
+region = "Oakland, California"
+country = "US"
+
+[[source]]
+name = "Minneapolis City Council"
+url = "https://www.minneapolismn.gov"
+region = "Minneapolis, Minnesota"
+country = "US"
+
+[[source]]
+name = "Tulsa City Council"
+url = "https://www.cityoftulsa.org"
+region = "Tulsa, Oklahoma"
+country = "US"
+
+[[source]]
+name = "Arlington City Council"
+url = "https://www.arlingtontx.gov"
+region = "Arlington, Texas"
+country = "US"
+
+[[source]]
+name = "Tampa City Council"
+url = "https://www.tampa.gov"
+region = "Tampa, Florida"
+country = "US"
+
+[[source]]
+name = "New Orleans City Council"
+url = "https://council.nola.gov"
+region = "New Orleans, Louisiana"
+country = "US"
+
+[[source]]
+name = "Pittsburgh City Council"
+url = "https://pittsburghpa.gov"
+region = "Pittsburgh, Pennsylvania"
+country = "US"
+
+[[source]]
+name = "Cincinnati City Council"
+url = "https://www.cincinnati-oh.gov"
+region = "Cincinnati, Ohio"
+country = "US"
+
+[[source]]
+name = "St. Louis City Council"
+url = "https://www.stlouis-mo.gov"
+region = "St. Louis, Missouri"
+country = "US"
+
+[[source]]
+name = "Cleveland City Council"
+url = "https://www.clevelandohio.gov"
+region = "Cleveland, Ohio"
+country = "US"
+
+# — Washington —
+[[source]]
+name = "Spokane City Council"
+url = "https://my.spokanecity.org"
+region = "Spokane, Washington"
+country = "US"
+
+[[source]]
+name = "Tacoma City Council"
+url = "https://www.cityoftacoma.org"
+region = "Tacoma, Washington"
+country = "US"
+
+[[source]]
+name = "Bellevue City Council"
+url = "https://bellevuewa.gov"
+region = "Bellevue, Washington"
+country = "US"
+
+# — Oregon —
+[[source]]
+name = "Eugene City Council"
+url = "https://www.eugene-or.gov"
+region = "Eugene, Oregon"
+country = "US"
+
+[[source]]
+name = "Salem City Council"
+url = "https://www.cityofsalem.net"
+region = "Salem, Oregon"
+country = "US"
+
+# — California —
+[[source]]
+name = "Santa Ana City Council"
+url = "https://www.santa-ana.org"
+region = "Santa Ana, California"
+country = "US"
+
+[[source]]
+name = "Anaheim City Council"
+url = "https://www.anaheim.net"
+region = "Anaheim, California"
+country = "US"
+
+[[source]]
+name = "Bakersfield City Council"
+url = "https://www.bakersfield.ca.us"
+region = "Bakersfield, California"
+country = "US"
+
+[[source]]
+name = "Riverside City Council"
+url = "https://www.riversideca.gov"
+region = "Riverside, California"
+country = "US"
+
+[[source]]
+name = "Stockton City Council"
+url = "https://www.stocktonca.gov"
+region = "Stockton, California"
+country = "US"
+
+[[source]]
+name = "Irvine City Council"
+url = "https://www.cityofirvine.org"
+region = "Irvine, California"
+country = "US"
+
+[[source]]
+name = "Chula Vista City Council"
+url = "https://www.chulavistaca.gov"
+region = "Chula Vista, California"
+country = "US"
+
+[[source]]
+name = "Fremont City Council"
+url = "https://www.fremont.gov"
+region = "Fremont, California"
+country = "US"
+
+[[source]]
+name = "San Bernardino City Council"
+url = "https://www.ci.san-bernardino.ca.us"
+region = "San Bernardino, California"
+country = "US"
+
+[[source]]
+name = "Modesto City Council"
+url = "https://www.modestogov.com"
+region = "Modesto, California"
+country = "US"
+
+# — Texas —
+[[source]]
+name = "Corpus Christi City Council"
+url = "https://www.cctexas.com"
+region = "Corpus Christi, Texas"
+country = "US"
+
+[[source]]
+name = "Plano City Council"
+url = "https://www.plano.gov"
+region = "Plano, Texas"
+country = "US"
+
+[[source]]
+name = "Lubbock City Council"
+url = "https://www.mylubbock.us"
+region = "Lubbock, Texas"
+country = "US"
+
+[[source]]
+name = "Garland City Council"
+url = "https://www.garlandtx.gov"
+region = "Garland, Texas"
+country = "US"
+
+[[source]]
+name = "Irving City Council"
+url = "https://www.cityofirving.org"
+region = "Irving, Texas"
+country = "US"
+
+[[source]]
+name = "Frisco City Council"
+url = "https://www.friscotexas.gov"
+region = "Frisco, Texas"
+country = "US"
+
+[[source]]
+name = "McKinney City Council"
+url = "https://www.mckinneytexas.org"
+region = "McKinney, Texas"
+country = "US"
+
+[[source]]
+name = "Amarillo City Council"
+url = "https://www.amarillo.gov"
+region = "Amarillo, Texas"
+country = "US"
+
+# — Florida —
+[[source]]
+name = "Orlando City Council"
+url = "https://www.orlando.gov"
+region = "Orlando, Florida"
+country = "US"
+
+[[source]]
+name = "St. Petersburg City Council"
+url = "https://www.stpete.org"
+region = "St. Petersburg, Florida"
+country = "US"
+
+[[source]]
+name = "Hialeah City Council"
+url = "https://www.hialeahfl.gov"
+region = "Hialeah, Florida"
+country = "US"
+
+[[source]]
+name = "Tallahassee City Council"
+url = "https://www.talgov.com"
+region = "Tallahassee, Florida"
+country = "US"
+
+[[source]]
+name = "Fort Lauderdale City Council"
+url = "https://www.fortlauderdale.gov"
+region = "Fort Lauderdale, Florida"
+country = "US"
+
+# — Arizona —
+[[source]]
+name = "Scottsdale City Council"
+url = "https://www.scottsdaleaz.gov"
+region = "Scottsdale, Arizona"
+country = "US"
+
+[[source]]
+name = "Glendale City Council"
+url = "https://www.glendaleaz.com"
+region = "Glendale, Arizona"
+country = "US"
+
+[[source]]
+name = "Peoria City Council"
+url = "https://www.peoriaaz.gov"
+region = "Peoria, Arizona"
+country = "US"
+
+[[source]]
+name = "Tempe City Council"
+url = "https://www.tempe.gov"
+region = "Tempe, Arizona"
+country = "US"
+
+# — Colorado —
+[[source]]
+name = "Aurora City Council"
+url = "https://www.auroragov.org"
+region = "Aurora, Colorado"
+country = "US"
+
+[[source]]
+name = "Fort Collins City Council"
+url = "https://www.fcgov.com"
+region = "Fort Collins, Colorado"
+country = "US"
+
+[[source]]
+name = "Boulder City Council"
+url = "https://bouldercolorado.gov"
+region = "Boulder, Colorado"
+country = "US"
+
+# — Utah —
+[[source]]
+name = "Salt Lake City Council"
+url = "https://www.slc.gov"
+region = "Salt Lake City, Utah"
+country = "US"
+
+[[source]]
+name = "Provo City Council"
+url = "https://provo.org"
+region = "Provo, Utah"
+country = "US"
+
+# — Nevada —
+[[source]]
+name = "Reno City Council"
+url = "https://www.reno.gov"
+region = "Reno, Nevada"
+country = "US"
+
+[[source]]
+name = "Henderson City Council"
+url = "https://www.cityofhenderson.com"
+region = "Henderson, Nevada"
+country = "US"
+
+# — New Mexico —
+[[source]]
+name = "Santa Fe City Council"
+url = "https://www.santafenm.gov"
+region = "Santa Fe, New Mexico"
+country = "US"
+
+# — Georgia —
+[[source]]
+name = "Savannah City Council"
+url = "https://www.savannahga.gov"
+region = "Savannah, Georgia"
+country = "US"
+
+[[source]]
+name = "Athens City Council"
+url = "https://www.athensclarke.com"
+region = "Athens, Georgia"
+country = "US"
+
+# — North Carolina —
+[[source]]
+name = "Durham City Council"
+url = "https://www.durhamnc.gov"
+region = "Durham, North Carolina"
+country = "US"
+
+[[source]]
+name = "Winston-Salem City Council"
+url = "https://www.cityofws.org"
+region = "Winston-Salem, North Carolina"
+country = "US"
+
+# — Tennessee —
+[[source]]
+name = "Knoxville City Council"
+url = "https://www.knoxvilletn.gov"
+region = "Knoxville, Tennessee"
+country = "US"
+
+[[source]]
+name = "Chattanooga City Council"
+url = "https://www.chattanooga.gov"
+region = "Chattanooga, Tennessee"
+country = "US"
+
+# — Wisconsin —
+[[source]]
+name = "Madison City Council"
+url = "https://www.cityofmadison.com"
+region = "Madison, Wisconsin"
+country = "US"
+
+[[source]]
+name = "Green Bay City Council"
+url = "https://www.greenbaywi.gov"
+region = "Green Bay, Wisconsin"
+country = "US"
+
+# — Minnesota —
+[[source]]
+name = "St. Paul City Council"
+url = "https://www.stpaul.gov"
+region = "St. Paul, Minnesota"
+country = "US"
+
+# — Iowa —
+[[source]]
+name = "Des Moines City Council"
+url = "https://www.dsm.city"
+region = "Des Moines, Iowa"
+country = "US"
+
+# — Nebraska —
+[[source]]
+name = "Lincoln City Council"
+url = "https://www.lincoln.ne.gov"
+region = "Lincoln, Nebraska"
+country = "US"
+
+# — Kansas —
+[[source]]
+name = "Wichita City Council"
+url = "https://www.wichita.gov"
+region = "Wichita, Kansas"
+country = "US"
+
+# — Missouri —
+[[source]]
+name = "Springfield City Council"
+url = "https://www.springfieldmo.gov"
+region = "Springfield, Missouri"
+country = "US"
+
+# — Ohio —
+[[source]]
+name = "Toledo City Council"
+url = "https://www.toledo.oh.gov"
+region = "Toledo, Ohio"
+country = "US"
+
+[[source]]
+name = "Akron City Council"
+url = "https://www.akronohio.gov"
+region = "Akron, Ohio"
+country = "US"
+
+# — Michigan —
+[[source]]
+name = "Grand Rapids City Council"
+url = "https://www.grandrapidsmi.gov"
+region = "Grand Rapids, Michigan"
+country = "US"
+
+# — Indiana —
+[[source]]
+name = "Fort Wayne City Council"
+url = "https://www.cityoffortwayne.org"
+region = "Fort Wayne, Indiana"
+country = "US"
+
+# — Illinois —
+[[source]]
+name = "Aurora City Council"
+url = "https://www.aurora-il.org"
+region = "Aurora, Illinois"
+country = "US"
+
+[[source]]
+name = "Naperville City Council"
+url = "https://www.naperville.il.us"
+region = "Naperville, Illinois"
+country = "US"
+
+# — Pennsylvania —
+[[source]]
+name = "Allentown City Council"
+url = "https://www.allentownpa.gov"
+region = "Allentown, Pennsylvania"
+country = "US"
+
+# — New York —
+[[source]]
+name = "Buffalo Common Council"
+url = "https://www.buffalony.gov"
+region = "Buffalo, New York"
+country = "US"
+
+[[source]]
+name = "Rochester City Council"
+url = "https://www.cityofrochester.gov"
+region = "Rochester, New York"
+country = "US"
+
+# — Massachusetts —
+[[source]]
+name = "Cambridge City Council"
+url = "https://www.cambridgema.gov"
+region = "Cambridge, Massachusetts"
+country = "US"
+
+[[source]]
+name = "Worcester City Council"
+url = "https://www.worcesterma.gov"
+region = "Worcester, Massachusetts"
+country = "US"
+
+# — District of Columbia —
+[[source]]
+name = "DC Council"
+url = "https://dccouncil.gov"
+region = "Washington, District of Columbia"
+country = "US"
+
+# — Hawaii —
+[[source]]
+name = "Honolulu City Council"
+url = "https://www.honolulu.gov"
+region = "Honolulu, Hawaii"
+country = "US"
+
+# — Alaska —
+[[source]]
+name = "Anchorage Assembly"
+url = "https://www.anchoragelike.com"
+region = "Anchorage, Alaska"
+country = "US"

@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { auth, signIn, signOut } from "@/auth";
 import { db } from "@/db";
 import { modules, subscriptions } from "@/db/schema";
@@ -32,4 +32,26 @@ export async function subscribe(input: {
     contact: input.contact,
     userId: session?.user?.id ?? null,
   });
+}
+
+/** Unsubscribe from a module. Requires the user to be signed in. */
+export async function unsubscribe(input: { slug: string }) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not signed in");
+
+  const [m] = await db
+    .select({ id: modules.id })
+    .from(modules)
+    .where(eq(modules.slug, input.slug))
+    .limit(1);
+  if (!m) throw new Error("Unknown module");
+
+  await db
+    .delete(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.moduleId, m.id),
+        eq(subscriptions.userId, session.user.id),
+      ),
+    );
 }

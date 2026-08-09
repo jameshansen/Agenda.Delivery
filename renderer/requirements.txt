@@ -1,0 +1,5 @@
+# Chromium binaries come from the base image; pin the playwright package so
+# it installs into the same env gunicorn runs in.
+playwright==1.49.0
+flask==3.1.0
+gunicorn==23.0.0

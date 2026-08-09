@@ -1,0 +1,22 @@
+# ─────────────────────────────────────────────────────────────
+# .dockerignore — keep the build context small
+# ─────────────────────────────────────────────────────────────
+
+node_modules
+.next
+.git
+.gitignore
+*.md
+.env
+.env.local
+.env.*.local
+mockups
+old
+docker-compose*.yml
+Dockerfile
+.dockerignore
+.github
+.vscode
+.idea
+*.log
+npm-debug.log*

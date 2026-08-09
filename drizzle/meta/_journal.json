@@ -5,8 +5,43 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1785626392221,
-      "tag": "0000_grey_victor_mancha",
+      "when": 1786089226400,
+      "tag": "0000_red_maestro",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786089923162,
+      "tag": "0001_pale_doctor_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786115382075,
+      "tag": "0002_perpetual_shockwave",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786115988335,
+      "tag": "0003_groovy_slipstream",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786125292380,
+      "tag": "0004_ambitious_starfox",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786127394717,
+      "tag": "0005_true_salo",
       "breakpoints": true
     }
   ]

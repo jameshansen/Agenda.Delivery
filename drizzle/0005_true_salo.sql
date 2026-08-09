@@ -1,0 +1,1 @@
+ALTER TABLE "module" ADD COLUMN "last_checked" timestamp;

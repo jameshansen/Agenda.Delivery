@@ -1,14 +1,32 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import AgentLog from "@/components/AgentLog";
+import AgentLogStream from "@/components/AgentLogStream";
 import SubscribeCard from "@/components/SubscribeCard";
 import { getModuleBySlug, type Health } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
+// Generate metadata with RSS discovery link for the module
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  return {
+    alternates: {
+      types: {
+        "application/rss+xml": `/module/${slug}/rss.xml`,
+      },
+    },
+  };
+}
+
 const HEALTH: Record<Health, { label: string; className: string }> = {
   healthy: { label: "● healthy", className: "text-emerald-700 bg-emerald-500/10" },
-  repairing: { label: "● self-repaired", className: "text-amber-700 bg-amber-500/10" },
+  repairing: { label: "● repairing", className: "text-amber-700 bg-amber-500/10" },
   broken: { label: "● broken", className: "text-rose-700 bg-rose-500/10" },
 };
 
@@ -45,6 +63,9 @@ export default async function ModulePage({
         <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-ink-soft">
           <span>Last updated {m.lastUpdated}</span>
           <span>Next agenda expected {m.nextExpected}</span>
+          {m.lastChecked && m.lastChecked !== "—" && (
+            <span>Last checked {m.lastChecked}</span>
+          )}
           <span>{m.followers} followers</span>
           <a
             href={m.sourceUrl}
@@ -55,6 +76,31 @@ export default async function ModulePage({
             source ↗
           </a>
         </div>
+
+        {/* Latest agenda download */}
+        {m.latestCouncilMeeting && (m.latestCouncilMeeting.pdfUrl || m.latestCouncilMeeting.meetingUrl) && (
+          <a
+            href={m.latestCouncilMeeting.pdfUrl ?? m.latestCouncilMeeting.meetingUrl!}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-6 flex items-center gap-4 rounded-2xl border-2 border-rust/60 bg-rust/5 px-5 py-4 transition-colors hover:border-rust hover:bg-rust/10"
+          >
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rust/15 text-rust">
+              <i className="fa-solid fa-file-pdf text-2xl" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-ink">
+                {m.latestCouncilMeeting.pdfUrl ? "Download the latest council meeting agenda" : "View the latest council meeting agenda"}
+              </span>
+              <span className="block truncate text-sm text-ink-soft">
+                {m.latestCouncilMeeting.title} · {m.latestCouncilMeeting.date} · {m.latestCouncilMeeting.pages} pages
+              </span>
+            </span>
+            <span className="ml-auto shrink-0 text-rust">
+              <i className={`fa-solid ${m.latestCouncilMeeting.pdfUrl ? "fa-download" : "fa-up-right-from-square"} text-lg`} />
+            </span>
+          </a>
+        )}
 
         <div className="mt-8 grid gap-8 lg:grid-cols-3">
           {/* Main column */}
@@ -86,6 +132,7 @@ export default async function ModulePage({
                 {m.keywords.map((k) => (
                   <details
                     key={k.keyword}
+                    open
                     className="group rounded-xl border border-black/10 bg-white/50 p-4"
                   >
                     <summary className="flex cursor-pointer items-center gap-3 list-none">
@@ -128,25 +175,62 @@ export default async function ModulePage({
             {/* Meetings */}
             <section>
               <h2 className="text-xl">Recent agendas</h2>
-              <ul className="mt-3 divide-y divide-black/5 rounded-xl border border-black/10 bg-white/40">
-                {m.meetings.map((mt, i) => (
-                  <li
-                    key={i}
-                    className="flex items-center justify-between gap-4 px-4 py-3"
-                  >
-                    <div>
-                      <div className="font-medium">{mt.title}</div>
-                      <div className="text-sm text-ink-soft">
-                        {mt.date} · {mt.kind} · {mt.pages} pages
+              {m.meetings.length === 0 ? (
+                <div className="mt-3 rounded-xl border border-dashed border-black/15 bg-white/30 px-4 py-8 text-center">
+                  <i className="fa-solid fa-inbox text-2xl text-ink-soft/50" />
+                  <p className="mt-2 text-sm text-ink-soft">
+                    No agendas recorded yet. The Checking Agent will populate
+                    this list automatically when it finds new meetings.
+                  </p>
+                </div>
+              ) : (
+                <ul className="mt-3 divide-y divide-black/5 rounded-xl border border-black/10 bg-white/40">
+                  {m.meetings.map((mt, i) => (
+                    <li
+                      key={i}
+                      className="flex items-center justify-between gap-4 px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{mt.title}</span>
+                          <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs text-ink-soft">
+                            {mt.kind}
+                          </span>
+                        </div>
+                        <div className="text-sm text-ink-soft">
+                          {mt.date} · {mt.pages} pages
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-4 text-sm">
-                      <button className="hover:text-green">PDF</button>
-                      <button className="hover:text-green">Summary</button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                      <div className="flex gap-4 text-sm">
+                        {mt.pdfUrl ? (
+                          <a
+                            href={mt.pdfUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hover:text-green"
+                          >
+                            PDF
+                          </a>
+                        ) : mt.meetingUrl ? (
+                          <a
+                            href={mt.meetingUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hover:text-green"
+                          >
+                            View
+                          </a>
+                        ) : (
+                          <span className="text-ink-soft/50">no link</span>
+                        )}
+                        <a href="#summary" className="hover:text-green">
+                          Summary
+                        </a>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           </div>
 
@@ -155,13 +239,32 @@ export default async function ModulePage({
             <div className="lg:sticky lg:top-6 rounded-2xl border border-black/10 bg-paper/60 p-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg">Agent activity</h2>
-                <span className="text-xs text-ink-soft">last scrape run</span>
+                <span className="text-xs text-ink-soft">live</span>
               </div>
               <p className="mt-1 text-xs text-ink-soft">
-                Everything the module did to fetch and self-verify this update.
+                Every step the agents took to fetch and verify this agenda is
+                visible here in real-time. This is the agent working in the open.
               </p>
-              <div className="mt-4">
-                <AgentLog events={m.agentLog} />
+              <div className="mt-4 max-h-[400px] overflow-y-auto pr-1">
+                <AgentLogStream
+                  moduleId={m.id}
+                  initialEvents={m.agentLog.map((e) => ({
+                    runId: "replay",
+                    moduleId: m.id,
+                    agent: e.agent,
+                    action: e.action,
+                    tool: e.tool,
+                    detail: e.detail,
+                  }))}
+                />
+              </div>
+              <div className="mt-4 border-t border-black/5 pt-3">
+                <p className="text-xs font-semibold text-ink-soft">
+                  Last completed run
+                </p>
+                <div className="mt-2 max-h-[300px] overflow-y-auto pr-1">
+                  <AgentLog events={m.agentLog} />
+                </div>
               </div>
             </div>
           </aside>

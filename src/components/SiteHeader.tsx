@@ -19,6 +19,9 @@ export default async function SiteHeader() {
           <Link href="/spider" className="hover:text-green">
             Spider
           </Link>
+          <Link href="/agents" className="hover:text-green">
+            Agents
+          </Link>
           {session?.user ? (
             <>
               <Link href="/account" className="hover:text-green">

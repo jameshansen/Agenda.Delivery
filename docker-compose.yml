@@ -1,17 +1,171 @@
-# Local dev Postgres. Prod DB is provisioned separately (Phase 7).
+# ─────────────────────────────────────────────────────────────
+# agenda.delivery — one-command deploy.
+#   docker compose up --build
+# Brings up: nginx, ui, orchestrator, 6 agent containers, redis, postgres.
+# ─────────────────────────────────────────────────────────────
+
+x-agent-env: &agent-env
+  DATABASE_URL: postgresql://agenda:${POSTGRES_PASSWORD:-agenda}@postgres:5432/agenda
+  REDIS_URL: redis://redis:6379/0
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+  OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+  AGENT_MODEL: ${AGENT_MODEL:-glm-5.2}
+  SUMMARY_MODEL: ${SUMMARY_MODEL:-gemma4:31b}
+  RENDERER_URL: http://renderer:8000
+
+x-agent-build: &agent-build
+  context: ./agents
+  dockerfile: Dockerfile
+
+x-agent-common: &agent-common
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_started
+  networks: [agenda-net]
+
 services:
-  db:
+  postgres:
     image: postgres:16-alpine
-    container_name: agenda-db
+    container_name: agenda-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: agenda
-      POSTGRES_PASSWORD: agenda
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agenda}
       POSTGRES_DB: agenda
-    ports:
-      - "5432:5432"
     volumes:
       - agenda-pgdata:/var/lib/postgresql/data
+      # schema.sql + seed.sql run alphabetically on first init.
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenda"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [agenda-net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: agenda-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - agenda-redisdata:/data
+    networks: [agenda-net]
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    container_name: agenda-orchestrator
+    restart: unless-stopped
+    environment:
+      <<: *agent-env
+      CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-21600}
+      SPIDER_INTERVAL_SECS: ${SPIDER_INTERVAL_SECS:-3600}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [agenda-net]
+
+  # ── Headless renderer (Playwright/Chromium) for JS-heavy sites ──
+  renderer:
+    build:
+      context: ./renderer
+    container_name: agenda-renderer
+    restart: unless-stopped
+    shm_size: "1gb"
+    networks: [agenda-net]
+
+  # ── Undetected browser (Selenium + undetected-chromedriver) ──
+  # The Scraper Agent drives this to LEARN how to reach each council's
+  # latest agenda (Claude-for-Chrome-style toolset). Heavy; used at setup
+  # + repair, not on every recurring check.
+  browser:
+    build:
+      context: ./browser
+    container_name: agenda-browser
+    restart: unless-stopped
+    shm_size: "2gb"
+    environment:
+      BROWSER_URL: http://browser:8000
+    networks: [agenda-net]
+
+  # ── Agents (Python + Gunicorn, one container each) ──
+  spider:
+    <<: *agent-common
+    build: { <<: *agent-build, args: { AGENT: spider } }
+    environment: *agent-env
+    volumes:
+      # The council registry — editable without a rebuild (admin panel, Task 2).
+      - ./sources.toml:/app/sources.toml:ro
+
+  scraper:
+    <<: *agent-common
+    build: { <<: *agent-build, args: { AGENT: scraper } }
+    environment: *agent-env
+
+  checking:
+    <<: *agent-common
+    build: { <<: *agent-build, args: { AGENT: checking } }
+    environment: *agent-env
+
+  categorization:
+    <<: *agent-common
+    build: { <<: *agent-build, args: { AGENT: categorization } }
+    environment: *agent-env
+
+  summary:
+    <<: *agent-common
+    build: { <<: *agent-build, args: { AGENT: summary } }
+    environment: *agent-env
+
+  keyword:
+    <<: *agent-common
+    build: { <<: *agent-build, args: { AGENT: keyword } }
+    environment: *agent-env
+
+  # ── UI (Next.js, read-only DB reader) ──
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agenda-ui
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://agenda:${POSTGRES_PASSWORD:-agenda}@postgres:5432/agenda
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-me}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
+      # UI reaches the orchestrator for manual triggers (server-side only).
+      ORCHESTRATOR_URL: http://orchestrator:8000
+      NODE_ENV: production
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [agenda-net]
+
+  nginx:
+    image: nginx:alpine
+    container_name: agenda-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on: [ui, orchestrator]
+    networks: [agenda-net]
 
 volumes:
   agenda-pgdata:
+  agenda-redisdata:
+
+networks:
+  agenda-net:
+    driver: bridge

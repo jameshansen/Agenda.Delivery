@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { subscribe } from "@/app/actions";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Accepts +1 604-555-0134, (604) 555-0134, etc.
+const PHONE_RE = /^\+?[\d\s()\-]{7,16}$/;
+
 export default function SubscribeCard({
   moduleName,
   moduleSlug,
@@ -24,13 +28,28 @@ export default function SubscribeCard({
       setError(`Enter ${channel === "email" ? "an email" : "a phone number"}.`);
       return;
     }
+    // Client-side validation
+    if (channel === "email" && !EMAIL_RE.test(contact)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (channel === "text" && !PHONE_RE.test(contact)) {
+      setError("Please enter a valid phone number (e.g. +1 604 555 0134).");
+      return;
+    }
     setPending(true);
     setError(null);
     try {
       await subscribe({ slug: moduleSlug, channel, contact });
       setDone(channel);
-    } catch {
-      setError("Couldn't subscribe just now. Try again.");
+    } catch (err) {
+      console.error("[SubscribeCard] subscribe failed:", err);
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setError(
+        msg.includes("Unknown module")
+          ? "This module could not be found. Please refresh and try again."
+          : "Couldn't subscribe just now. Try again.",
+      );
     } finally {
       setPending(false);
     }
