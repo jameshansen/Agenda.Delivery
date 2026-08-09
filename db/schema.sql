@@ -173,8 +173,17 @@ CREATE TABLE IF NOT EXISTS scrape_config (
   hints         TEXT,
   version       INTEGER NOT NULL DEFAULT 1,
   verified      BOOLEAN NOT NULL DEFAULT TRUE,
+  -- Best-effort guess at the meeting-portal platform (escribe/legistar/civicweb/...),
+  -- set once the browser nav loop has visited the site. NULL = unknown/static site.
+  platform      TEXT,
+  -- The click/goto trail the browser nav loop took to reach the latest agenda,
+  -- as a JSON array. Diagnostic + a starting point for repair; the cheap path
+  -- (agenda_url) is tried first on every recurring check, this is the fallback.
+  nav_recipe    TEXT,
   updated_at    TIMESTAMP NOT NULL DEFAULT now()
 );
+ALTER TABLE scrape_config ADD COLUMN IF NOT EXISTS platform TEXT;
+ALTER TABLE scrape_config ADD COLUMN IF NOT EXISTS nav_recipe TEXT;
 
 CREATE TABLE IF NOT EXISTS spider_candidate (
   id                     TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,

@@ -2,255 +2,443 @@ import os
 import time
 import threading
 import uuid
+
 from flask import Flask, request, jsonify
+
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    WebDriverException,
+    StaleElementReferenceException,
+)
 
 app = Flask(__name__)
 
 SESSIONS = {}
 GLOBAL_LOCK = threading.Lock()
 
-_COLLECT_JS = """
-(function() {
-    var results = [];
-    var interactiveSelector = 'a,button,select,textarea,input:not([type="hidden"]),[role="button"],[onclick]';
-    var els = document.querySelectorAll(interactiveSelector);
-    var count = 0;
-    for (var i = 0; i < els.length && count < 120; i++) {
-        var el = els[i];
-        try {
-            var visible = el.offsetParent !== null && el.offsetWidth > 0 && el.offsetHeight > 0;
-        } catch(e) {
-            var visible = false;
-        }
-        if (!visible) {
-            continue;
-        }
-        var ref = 'e' + count;
-        el.setAttribute('data-agx', ref);
-        var text = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 100);
-        var href = el.href || '';
-        results.push({ref: ref, tag: el.tagName.toLowerCase(), text: text, href: href});
-        count++;
+CHROME_BIN = os.environ.get("CHROME_BIN")
+CHROMEDRIVER_PATH = os.environ.get("CHROMEDRIVER_PATH")
+
+
+def _make_driver():
+    options = uc.ChromeOptions()
+    options.headless = True
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1280,1600")
+    if CHROME_BIN:
+        options.binary_location = CHROME_BIN
+    kwargs = {"options": options}
+    if CHROMEDRIVER_PATH:
+        kwargs["driver_executable_path"] = CHROMEDRIVER_PATH
+    driver = uc.Chrome(**kwargs)
+    driver.set_page_load_timeout(60)
+    return driver
+
+
+def _parse_ref(ref):
+    if not isinstance(ref, str):
+        raise ValueError("ref must be a string")
+    parts = ref.split(".")
+    if not parts:
+        raise ValueError("empty ref")
+    last = parts[-1]
+    if not last.startswith("e"):
+        raise ValueError("last segment must start with 'e'")
+    local_idx = int(last[1:])
+    frame_path = [int(p) for p in parts[:-1]]
+    return frame_path, local_idx
+
+
+def _goto_frame(driver, frame_path):
+    driver.switch_to.default_content()
+    if not frame_path:
+        return
+    for idx in frame_path:
+        frames = driver.find_elements(By.CSS_SELECTOR, "iframe, frame")
+        if idx < 0 or idx >= len(frames):
+            raise IndexError("frame index out of range: %d (have %d)" % (idx, len(frames)))
+        driver.switch_to.frame(frames[idx])
+
+
+def _iter_frame_tree(driver, max_depth=3, max_total=40):
+    visited = {"count": 0}
+
+    def walk(path):
+        if visited["count"] >= max_total:
+            return
+        if len(path) > max_depth:
+            return
+        visited["count"] += 1
+        yield list(path)
+
+        # Enumerate children at current context (we are currently switched into path).
+        if len(path) >= max_depth:
+            return
+        if visited["count"] >= max_total:
+            return
+        try:
+            frames = driver.find_elements(By.CSS_SELECTOR, "iframe, frame")
+        except Exception:
+            return
+        n = len(frames)
+        for i in range(n):
+            if visited["count"] >= max_total:
+                return
+            # Switch into child i from current context.
+            try:
+                driver.switch_to.frame(i)
+            except Exception:
+                # Skip this subtree, restore current context before trying next sibling.
+                try:
+                    driver.switch_to.default_content()
+                    for idx in path:
+                        f = driver.find_elements(By.CSS_SELECTOR, "iframe, frame")
+                        driver.switch_to.frame(f[idx])
+                except Exception:
+                    return
+                continue
+
+            try:
+                yield from walk(path + [i])
+            except Exception:
+                pass
+
+            # Restore current context from scratch.
+            try:
+                driver.switch_to.default_content()
+                for idx in path:
+                    f = driver.find_elements(By.CSS_SELECTOR, "iframe, frame")
+                    if idx >= len(f):
+                        return
+                    driver.switch_to.frame(f[idx])
+            except Exception:
+                return
+
+    # Start at top.
+    driver.switch_to.default_content()
+    yield from walk([])
+
+
+_JS_STATE = r"""
+(function(){
+  var sels = ['a[href]','button','input','select','textarea','[role="button"]','[onclick]','[tabindex]'];
+  var set = new Set();
+  var out = [];
+  for (var si=0; si<sels.length; si++){
+    var els = document.querySelectorAll(sels[si]);
+    for (var i=0; i<els.length; i++){
+      var el = els[i];
+      if (set.has(el)) continue;
+      set.add(el);
+      var r = el.getBoundingClientRect();
+      var style = window.getComputedStyle(el);
+      if (r.width <= 0 || r.height <= 0) continue;
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      if (style.opacity === '0') continue;
+      var tag = el.tagName.toLowerCase();
+      if ((tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea') && el.disabled) continue;
+      if (el.getAttribute('aria-hidden') === 'true') continue;
+      if (el.getAttribute('tabindex') === '-1' && tag !== 'a' && tag !== 'button' && tag !== 'input' && tag !== 'select' && tag !== 'textarea' && !el.hasAttribute('onclick') && el.getAttribute('role') !== 'button') continue;
+      var text = (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('title') || '').replace(/\s+/g,' ').trim();
+      if (text.length > 100) text = text.slice(0,100);
+      var idx = out.length;
+      el.setAttribute('data-agx', String(idx));
+      out.push({idx: idx, tag: tag, text: text, href: el.href || ''});
     }
-    return results;
+  }
+  return out;
 })();
 """
 
 
-def _make_driver():
-    import undetected_chromedriver as uc
-    options = uc.ChromeOptions()
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1400,1800')
-    options.add_argument('--headless=new')
-    options.add_argument('--lang=en-CA')
-    options.binary_location = os.environ['CHROME_BIN']
-    driver = uc.Chrome(
-        options=options,
-        browser_executable_path=os.environ['CHROME_BIN'],
-        driver_executable_path=os.environ.get('CHROMEDRIVER_PATH'),
-        headless=True,
-        use_subprocess=False,
-    )
-    driver.set_page_load_timeout(45)
-    return driver
-
-
-def _sess(sid):
-    return SESSIONS.get(sid)
-
-
-def _wait_ready(driver, timeout):
-    end = time.time() + timeout
-    while time.time() < end:
-        try:
-            state = driver.execute_script('return document.readyState')
-            if state == 'complete':
-                return True
-        except Exception:
-            pass
-        time.sleep(0.3)
-    return False
-
-
-@app.route('/health', methods=['GET'])
+@app.route("/health", methods=["GET"])
 def health():
-    return jsonify({'ok': True})
+    return jsonify({"ok": True, "sessions": len(SESSIONS)})
 
 
-@app.route('/session', methods=['POST'])
+@app.route("/session", methods=["POST"])
 def create_session():
-    try:
-        driver = _make_driver()
-        sid = uuid.uuid4().hex
-        with GLOBAL_LOCK:
-            SESSIONS[sid] = {'driver': driver, 'lock': threading.Lock()}
-        return jsonify({'ok': True, 'session_id': sid})
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+    with GLOBAL_LOCK:
+        sid = str(uuid.uuid4())
+        try:
+            driver = _make_driver()
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        SESSIONS[sid] = {"driver": driver, "lock": threading.Lock(), "frame_map": {}}
+        return jsonify({"ok": True, "session_id": sid})
 
 
-@app.route('/session/<sid>', methods=['DELETE'])
+@app.route("/session/<sid>", methods=["DELETE"])
 def delete_session(sid):
     with GLOBAL_LOCK:
         entry = SESSIONS.pop(sid, None)
-    if entry is None:
-        return jsonify({'ok': False, 'error': 'session not found'}), 404
-    try:
-        with entry['lock']:
+    if not entry:
+        return jsonify({"ok": False, "error": "no such session"}), 404
+    with entry["lock"]:
+        try:
+            entry["driver"].quit()
+        except Exception:
+            pass
+    return jsonify({"ok": True})
+
+
+@app.route("/session/<sid>/goto", methods=["POST"])
+def goto(sid):
+    with GLOBAL_LOCK:
+        entry = SESSIONS.get(sid)
+    if not entry:
+        return jsonify({"ok": False, "error": "no such session"}), 404
+    data = request.get_json(silent=True) or {}
+    url = data.get("url")
+    if not url:
+        return jsonify({"ok": False, "error": "missing url"}), 400
+    with entry["lock"]:
+        try:
+            entry["driver"].get(url)
+            entry["frame_map"] = {}
+            entry["driver"].switch_to.default_content()
+            return jsonify({"ok": True, "url": entry["driver"].current_url, "title": entry["driver"].title})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/session/<sid>/state", methods=["GET"])
+def state(sid):
+    with GLOBAL_LOCK:
+        entry = SESSIONS.get(sid)
+    if not entry:
+        return jsonify({"ok": False, "error": "no such session"}), 404
+    max_chars = request.args.get("max_chars", default=6000, type=int)
+    with entry["lock"]:
+        driver = entry["driver"]
+        elements = []
+        frame_map = {}
+        try:
+            driver.switch_to.default_content()
             try:
-                entry['driver'].quit()
+                top_text = driver.execute_script("return document.body ? document.body.innerText : '';") or ""
+            except Exception:
+                top_text = ""
+            if len(top_text) > max_chars:
+                top_text = top_text[:max_chars]
+
+            for frame_path in _iter_frame_tree(driver):
+                try:
+                    _goto_frame(driver, frame_path)
+                except Exception:
+                    continue
+                try:
+                    # _JS_STATE is already a self-invoking IIFE ("(function(){...})();").
+                    # Prepend "return " with .strip() so no newline sits between
+                    # "return" and "(" -- otherwise ASI turns it into "return;".
+                    items = driver.execute_script("return " + _JS_STATE.strip())
+                except Exception:
+                    continue
+                if not items:
+                    continue
+                prefix = ".".join(str(p) for p in frame_path)
+                for item in items:
+                    if prefix:
+                        ref = prefix + ".e" + str(item["idx"])
+                    else:
+                        ref = "e" + str(item["idx"])
+                    elements.append({
+                        "ref": ref,
+                        "tag": item.get("tag"),
+                        "text": item.get("text", ""),
+                        "href": item.get("href", ""),
+                        "frame_path": list(frame_path),
+                    })
+                    frame_map[ref] = list(frame_path)
+            entry["frame_map"] = frame_map
+            return jsonify({
+                "ok": True,
+                "url": driver.current_url,
+                "title": driver.title,
+                "text": top_text,
+                "elements": elements,
+            })
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        finally:
+            try:
+                driver.switch_to.default_content()
             except Exception:
                 pass
-        return jsonify({'ok': True})
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
-@app.route('/session/<sid>/goto', methods=['POST'])
-def session_goto(sid):
+@app.route("/session/<sid>/click", methods=["POST"])
+def click(sid):
     with GLOBAL_LOCK:
-        entry = _sess(sid)
-    if entry is None:
-        return jsonify({'ok': False, 'error': 'session not found'}), 404
+        entry = SESSIONS.get(sid)
+    if not entry:
+        return jsonify({"ok": False, "error": "no such session"}), 404
+    data = request.get_json(silent=True) or {}
+    ref = data.get("ref")
+    if not ref:
+        return jsonify({"ok": False, "error": "missing ref"}), 400
     try:
-        data = request.get_json(force=True, silent=True) or {}
-        url = data.get('url')
-        if not url:
-            return jsonify({'ok': False, 'error': 'missing url'}), 400
-        with entry['lock']:
-            driver = entry['driver']
-            driver.get(url)
-            _wait_ready(driver, 20)
-            time.sleep(2.0)
-            return jsonify({
-                'ok': True,
-                'url': driver.current_url,
-                'title': driver.title,
-            })
+        frame_path, local_idx = _parse_ref(ref)
     except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
-
-
-@app.route('/session/<sid>/state', methods=['GET'])
-def session_state(sid):
-    with GLOBAL_LOCK:
-        entry = _sess(sid)
-    if entry is None:
-        return jsonify({'ok': False, 'error': 'session not found'}), 404
-    try:
-        max_chars = request.args.get('max_chars', default=6000, type=int)
-        with entry['lock']:
-            driver = entry['driver']
-            els = driver.execute_script('return ' + _COLLECT_JS)
-            text = driver.execute_script('return document.body.innerText') or ''
-            text = text.strip()
-            if max_chars and len(text) > max_chars:
-                text = text[:max_chars]
-            return jsonify({
-                'ok': True,
-                'url': driver.current_url,
-                'title': driver.title,
-                'text': text,
-                'elements': els,
-            })
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
-
-
-@app.route('/session/<sid>/click', methods=['POST'])
-def session_click(sid):
-    with GLOBAL_LOCK:
-        entry = _sess(sid)
-    if entry is None:
-        return jsonify({'ok': False, 'error': 'session not found'}), 404
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-        ref = data.get('ref')
-        if not ref:
-            return jsonify({'ok': False, 'error': 'missing ref'}), 400
-        with entry['lock']:
-            driver = entry['driver']
-            el = driver.find_element(By.CSS_SELECTOR, '[data-agx="{}"]'.format(ref))
-            driver.execute_script('arguments[0].scrollIntoView({block:"center"})', el)
+        return jsonify({"ok": False, "error": "bad ref: %s" % e}), 400
+    with entry["lock"]:
+        driver = entry["driver"]
+        try:
+            try:
+                _goto_frame(driver, frame_path)
+            except Exception:
+                return jsonify({"ok": False, "error": "stale ref -- frame structure changed, call /state again"}), 409
+            try:
+                el = driver.find_element(By.CSS_SELECTOR, '[data-agx="%d"]' % local_idx)
+            except NoSuchElementException:
+                return jsonify({"ok": False, "error": "stale ref -- element not found, call /state again"}), 404
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+            except Exception:
+                pass
             try:
                 el.click()
             except Exception:
-                driver.execute_script('arguments[0].click()', el)
-            _wait_ready(driver, 15)
+                try:
+                    driver.execute_script("arguments[0].click();", el)
+                except Exception as e:
+                    return jsonify({"ok": False, "error": "click failed: %s" % e}), 500
+
+            # Wait for top document ready.
+            driver.switch_to.default_content()
+            deadline = time.time() + 15
+            while time.time() < deadline:
+                try:
+                    ready = driver.execute_script("return document.readyState;")
+                    if ready == "complete":
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.25)
             time.sleep(1.5)
-            return jsonify({
-                'ok': True,
-                'url': driver.current_url,
-                'title': driver.title,
-            })
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+            try:
+                driver.switch_to.default_content()
+            except Exception:
+                pass
+            return jsonify({"ok": True, "url": driver.current_url, "title": driver.title})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        finally:
+            try:
+                driver.switch_to.default_content()
+            except Exception:
+                pass
 
 
-@app.route('/session/<sid>/type', methods=['POST'])
-def session_type(sid):
+@app.route("/session/<sid>/type", methods=["POST"])
+def type_route(sid):
     with GLOBAL_LOCK:
-        entry = _sess(sid)
-    if entry is None:
-        return jsonify({'ok': False, 'error': 'session not found'}), 404
+        entry = SESSIONS.get(sid)
+    if not entry:
+        return jsonify({"ok": False, "error": "no such session"}), 404
+    data = request.get_json(silent=True) or {}
+    ref = data.get("ref")
+    text = data.get("text", "")
+    submit = bool(data.get("submit", False))
+    if not ref:
+        return jsonify({"ok": False, "error": "missing ref"}), 400
     try:
-        data = request.get_json(force=True, silent=True) or {}
-        ref = data.get('ref')
-        text = data.get('text', '')
-        submit = bool(data.get('submit', False))
-        if not ref:
-            return jsonify({'ok': False, 'error': 'missing ref'}), 400
-        with entry['lock']:
-            driver = entry['driver']
-            el = driver.find_element(By.CSS_SELECTOR, '[data-agx="{}"]'.format(ref))
-            el.clear()
+        frame_path, local_idx = _parse_ref(ref)
+    except Exception as e:
+        return jsonify({"ok": False, "error": "bad ref: %s" % e}), 400
+    with entry["lock"]:
+        driver = entry["driver"]
+        try:
+            try:
+                _goto_frame(driver, frame_path)
+            except Exception:
+                return jsonify({"ok": False, "error": "stale ref -- frame structure changed, call /state again"}), 409
+            try:
+                el = driver.find_element(By.CSS_SELECTOR, '[data-agx="%d"]' % local_idx)
+            except NoSuchElementException:
+                return jsonify({"ok": False, "error": "stale ref -- element not found, call /state again"}), 404
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+            except Exception:
+                pass
+            try:
+                el.clear()
+            except Exception:
+                pass
             el.send_keys(text)
             if submit:
                 el.send_keys(Keys.RETURN)
             time.sleep(1.5)
-            return jsonify({
-                'ok': True,
-                'url': driver.current_url,
-                'title': driver.title,
-            })
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+            try:
+                driver.switch_to.default_content()
+            except Exception:
+                pass
+            return jsonify({"ok": True, "url": driver.current_url, "title": driver.title})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        finally:
+            try:
+                driver.switch_to.default_content()
+            except Exception:
+                pass
 
 
-@app.route('/session/<sid>/links', methods=['GET'])
-def session_links(sid):
+@app.route("/session/<sid>/links", methods=["GET"])
+def links(sid):
     with GLOBAL_LOCK:
-        entry = _sess(sid)
-    if entry is None:
-        return jsonify({'ok': False, 'error': 'session not found'}), 404
-    try:
-        with entry['lock']:
-            driver = entry['driver']
-            anchors = driver.execute_script(
-                "return Array.from(document.querySelectorAll('a[href]')).map(function(a){return a.href;});"
-            ) or []
+        entry = SESSIONS.get(sid)
+    if not entry:
+        return jsonify({"ok": False, "error": "no such session"}), 404
+    with entry["lock"]:
+        driver = entry["driver"]
+        try:
+            driver.switch_to.default_content()
+            all_links = []
             seen = set()
-            deduped = []
-            for u in anchors:
-                if u not in seen:
-                    seen.add(u)
-                    deduped.append(u)
-            pdfs = [u for u in deduped if u.lower().split('?')[0].endswith('.pdf')]
-            return jsonify({
-                'ok': True,
-                'links': deduped[:300],
-                'pdfs': pdfs,
-            })
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+            for frame_path in _iter_frame_tree(driver):
+                try:
+                    _goto_frame(driver, frame_path)
+                except Exception:
+                    continue
+                try:
+                    hrefs = driver.execute_script(
+                        "return Array.from(document.querySelectorAll('a[href]')).map(function(a){return a.href;});"
+                    ) or []
+                except Exception:
+                    continue
+                for h in hrefs:
+                    if not h or h in seen:
+                        continue
+                    seen.add(h)
+                    all_links.append(h)
+                    if len(all_links) >= 300:
+                        break
+                if len(all_links) >= 300:
+                    break
+            pdfs = []
+            pdf_seen = set()
+            for h in all_links:
+                try:
+                    stripped = h.split("?")[0].split("#")[0].lower()
+                except Exception:
+                    continue
+                if stripped.endswith(".pdf") and stripped not in pdf_seen:
+                    pdf_seen.add(stripped)
+                    pdfs.append(h)
+            return jsonify({"ok": True, "links": all_links, "pdfs": pdfs})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        finally:
+            try:
+                driver.switch_to.default_content()
+            except Exception:
+                pass
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, threaded=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), threaded=True)

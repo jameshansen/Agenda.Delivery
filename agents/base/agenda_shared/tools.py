@@ -17,6 +17,7 @@ from . import db
 from .llm import complete_json, summarize
 
 RENDERER_URL = os.environ.get("RENDERER_URL", "http://renderer:8000")
+BROWSER_URL = os.environ.get("BROWSER_URL", "http://browser:8000")
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like "
@@ -331,7 +332,56 @@ def _pick_candidates(all_links):
     return candidates
 
 
+def _looks_like_a_real_meeting(result: dict) -> bool:
+    """The cheap static path can return ok:True while having actually landed
+    on a generic category/archive page (e.g. a "2025 Agendas & Minutes" year
+    list) instead of a specific meeting. Requiring "has a PDF link" is NOT
+    enough -- a year-archive page legitimately has dozens of PDF links (one
+    per past meeting), so that check alone lets exactly this false positive
+    through. A real, correctly-identified meeting has a specific date; a
+    category/listing page does not. Require the date."""
+    if not result.get('ok'):
+        return False
+    d = result.get('data') or {}
+    return bool(d.get('meetingDate'))
+
+
 def agenda_find_latest(slug):
+    """Find the latest agenda. Cheap static/rendered path first -- unless a
+    prior browser run already tagged this module as needing the browser
+    (scrape_config.platform set), in which case skip straight to it, since
+    the cheap path is known to fail or produce false positives there.
+    Escalates to the undetected-browser LLM nav loop when the cheap path
+    fails OR returns a result that doesn't look like a real, dated meeting.
+    Escalation records a reusable recipe (entry URL + platform tag) so
+    future checks route correctly without re-discovering this."""
+    row = db.one(
+        "SELECT sc.platform FROM scrape_config sc "
+        "JOIN module m ON m.id = sc.module_id WHERE m.slug = %s", (slug,))
+    if row and row.get('platform'):
+        return browser_find_latest(slug)
+
+    result = _static_find_latest(slug)
+    if _looks_like_a_real_meeting(result):
+        return result
+    browser_result = browser_find_latest(slug)
+    if browser_result.get('ok'):
+        return browser_result
+    # Neither path produced a trustworthy result. Do NOT fall back to the
+    # cheap path's result here -- if it looked real we'd have returned it
+    # already, so what's left is either a clean failure (fine to surface)
+    # or a false positive we already know not to trust (must NOT surface
+    # as ok:True). Report a clear failure either way.
+    return {
+        'ok': False,
+        'detail': ('No specific dated meeting found (static path found only a '
+                  'generic/archive page, browser navigation also failed: '
+                  f"{browser_result.get('detail', 'unknown error')})"),
+        'data': {},
+    }
+
+
+def _static_find_latest(slug):
     try:
         row = db.one("SELECT * FROM module WHERE slug=%s", (slug,))
         if not row:
@@ -483,6 +533,172 @@ def agenda_find_latest(slug):
         }
     except Exception as e:
         return {'ok': False, 'detail': f'agenda.find_latest failed: {e}', 'data': {}}
+
+
+# -- browser.find_latest (agentic nav loop, undetected browser) --
+def browser_find_latest(slug, max_steps=8):
+    try:
+        mod = db.one("SELECT * FROM module WHERE slug=%s", (slug,))
+        if not mod:
+            return {"ok": False, "detail": "Module not found", "data": {}}
+        cfg = db.one("SELECT * FROM scrape_config WHERE module_id=%s", (mod["id"],))
+        start_url = (cfg or {}).get("agenda_url") or mod["source_url"]
+
+        try:
+            r = requests.post(f"{BROWSER_URL}/session", timeout=90)
+            sd = r.json()
+        except Exception as e:
+            return {"ok": False, "detail": f"Browser session failed: {e}", "data": {}}
+        if not sd.get("ok"):
+            return {"ok": False, "detail": f"Browser session failed: {sd}", "data": {}}
+        sid = sd["session_id"]
+
+        trail = []
+        found = False
+        picked_url = picked_title = picked_date = None
+        state = {}
+        try:
+            try:
+                g = requests.post(f"{BROWSER_URL}/session/{sid}/goto", json={"url": start_url}, timeout=90)
+                gj = g.json()
+                if not gj.get("ok"):
+                    return {"ok": False, "detail": f"goto start failed: {gj}", "data": {}}
+            except Exception as e:
+                return {"ok": False, "detail": f"goto start failed: {e}", "data": {}}
+
+            for step in range(max_steps):
+                try:
+                    st = requests.get(f"{BROWSER_URL}/session/{sid}/state?max_chars=2500", timeout=90)
+                    state = st.json()
+                    if not state.get("ok"):
+                        break
+                except Exception:
+                    break
+
+                try:
+                    lk = requests.get(f"{BROWSER_URL}/session/{sid}/links", timeout=90)
+                    links = lk.json()
+                    if not links.get("ok"):
+                        links = {"pdfs": []}
+                except Exception:
+                    links = {"pdfs": []}
+
+                elements = [{"ref": e.get("ref"), "tag": e.get("tag"), "text": (e.get("text") or "")[:200]}
+                            for e in (state.get("elements") or [])[:40]]
+                today = date.today().isoformat()
+                system = ("You are driving a real browser to find a council's most recent PUBLISHED (not future) "
+                          "meeting agenda. You see visible_text, elements, and pdf_links_seen. Respond JSON only: "
+                          '{"action":"click"|"goto"|"done"|"fail","ref":str|null,"url":str|null,"title":str|null,'
+                          '"date":"YYYY-MM-DD"|null,"reason":str}.')
+                user = json.dumps({
+                    "today": today, "step": step,
+                    "current_url": state.get("url"), "current_title": state.get("title"),
+                    "visible_text": (state.get("text") or "")[:1500],
+                    "elements": elements,
+                    "pdf_links_seen": (links.get("pdfs") or [])[:15],
+                })
+                try:
+                    decision = complete_json(system, user)
+                except Exception:
+                    decision = {"action": "fail", "reason": "llm error"}
+
+                trail.append({k: decision.get(k) for k in ("action", "ref", "url", "reason")})
+                action = decision.get("action")
+
+                if action == "done":
+                    picked_url = decision.get("url") or state.get("url")
+                    picked_title = decision.get("title")
+                    picked_date = decision.get("date")
+                    found = True
+                    break
+                elif action == "fail":
+                    found = False
+                    break
+                elif action == "click" and decision.get("ref"):
+                    try:
+                        requests.post(f"{BROWSER_URL}/session/{sid}/click", json={"ref": decision["ref"]}, timeout=90)
+                    except Exception:
+                        pass
+                    continue
+                elif action == "goto" and decision.get("url"):
+                    try:
+                        requests.post(f"{BROWSER_URL}/session/{sid}/goto", json={"url": decision["url"]}, timeout=90)
+                    except Exception:
+                        pass
+                    continue
+                else:
+                    continue
+        finally:
+            try:
+                requests.delete(f"{BROWSER_URL}/session/{sid}", timeout=90)
+            except Exception:
+                pass
+
+        if not found:
+            return {"ok": False, "detail": "Browser navigation exhausted without finding a specific agenda", "data": {"trail": trail}}
+
+        is_pdf = picked_url.lower().split("?")[0].endswith(".pdf")
+        pdf_text, pages = "", 0
+        if is_pdf:
+            try:
+                pdf_text, pages = _pdf_text(picked_url)
+            except Exception as e:
+                print(f"[browser_find_latest] PDF extract skipped: {e}")
+
+        agenda_text = ""
+        if not pdf_text and not is_pdf:
+            try:
+                res = requests.get(picked_url, timeout=20)
+                if res.ok:
+                    agenda_text = _html_to_text(res.text)
+                else:
+                    agenda_text = state.get("text", "")
+            except Exception:
+                agenda_text = state.get("text", "")
+        final_text = (pdf_text or agenda_text)[:12000]
+
+        hay = (picked_url + (mod["source_url"] or "")).lower()
+        platform_guess = None
+        for p in ("escribe", "legistar", "civicweb", "icompass", "granicus",
+                  "agendafiles", "meetingworkspace"):
+            if p in hay:
+                platform_guess = p
+                break
+
+        # Persist start_url (the navigable entry point), NOT picked_url. picked_url
+        # is often a specific document/PDF -- a dead end with no further links, so
+        # storing it as agenda_url would strand both the cheap static retry and any
+        # future browser re-navigation at a page they can't navigate onward from.
+        try:
+            if cfg:
+                db.execute(
+                    "UPDATE scrape_config SET agenda_url=%s, platform=%s, nav_recipe=%s, verified=TRUE, updated_at=now() WHERE module_id=%s",
+                    (start_url, platform_guess, json.dumps(trail), mod["id"]),
+                )
+            else:
+                db.execute(
+                    "INSERT INTO scrape_config (module_id, agenda_url, platform, nav_recipe, version, verified) VALUES (%s,%s,%s,%s,1,TRUE)",
+                    (mod["id"], start_url, platform_guess, json.dumps(trail)),
+                )
+        except Exception as e:
+            print(f"[browser_find_latest] recipe persist failed: {e}")
+
+        return {
+            "ok": True,
+            "detail": f'Browser found latest meeting: "{picked_title or "Council Meeting"}" ({picked_date or "date unknown"}) at {picked_url}, {len(final_text)} chars' + (f" (PDF {pages} pages)" if pages else ""),
+            "data": {
+                "meetingTitle": picked_title or "Council Meeting",
+                "meetingUrl": picked_url,
+                "meetingDate": picked_date,
+                "agendaText": final_text,
+                "pdfLinks": [picked_url] if is_pdf else [],
+                "listingUrl": start_url,
+                "platform": platform_guess,
+                "navSteps": len(trail),
+            },
+        }
+    except Exception as e:
+        return {"ok": False, "detail": f"browser_find_latest failed: {e}", "data": {}}
 
 
 _GENERIC_TITLES = ("council calendar", "meetings and agendas", "agenda search",

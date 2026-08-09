@@ -68,20 +68,35 @@ class _ScraperBase(BaseAgent):
         if final_url != mod["source_url"]:
             db.execute("UPDATE module SET source_url=%s WHERE id=%s", (final_url, mod["id"]))
 
+        # verify.selfcheck is a coarse, informational heuristic -- it does NOT
+        # gate whether we try to fetch the actual agenda. agenda_find_latest
+        # (called inside _fetch_first_agenda) is the real, authoritative
+        # check, with its own static->render->browser escalation; it can
+        # succeed on sites this quick check would wrongly reject.
         verify = tools.verify_selfcheck(slug)
         self.emit(
             ("Re-ran extraction against the new layout — fix confirmed." if repair
              else "Scrape config verified and ready.") if verify["ok"]
-            else "Config saved but verification had issues — will need a repair run.",
+            else "Quick check flagged possible drift — trying the full agenda search anyway.",
             "verify.selfcheck", verify["detail"])
 
-        if verify["ok"]:
-            self._fetch_first_agenda(mod, slug, repair)
+        # Health is decided by fetch_ok ALONE -- whether a real, specific,
+        # dated meeting was actually found -- never by verify["ok"], which is
+        # just a keyword heuristic and can pass on a page with no real
+        # meeting content. Using "verify or fetch_ok" here would let the weak
+        # signal alone mark a module healthy with nothing actually found.
+        healthy = self._fetch_first_agenda(mod, slug, repair)
 
         if repair:
-            db.execute("UPDATE module SET health='healthy', last_checked=now() WHERE id=%s",
-                       (mod["id"],))
-            return "Module repaired and healthy"
+            db.execute(
+                "UPDATE module SET health=%s, last_checked=now() WHERE id=%s",
+                ("healthy" if healthy else "repairing", mod["id"]),
+            )
+            return "Module repaired and healthy" if healthy else "Repair incomplete — will retry"
+
+        if not healthy:
+            db.execute("UPDATE module SET health='repairing' WHERE id=%s", (mod["id"],))
+            return "Scrape config saved, but could not confirm a live agenda yet"
         return "Scrape config created and verified"
 
     def _search_for_page(self, mod, agenda_url, links):
@@ -115,7 +130,10 @@ class _ScraperBase(BaseAgent):
                     return cand, d, dlinks
         return agenda_url, {"ok": False, "detail": "no agenda page found", "data": {}}, links
 
-    def _fetch_first_agenda(self, mod, slug, repair):
+    def _fetch_first_agenda(self, mod, slug, repair) -> bool:
+        """Returns True iff a specific, dated meeting was found and recorded --
+        this is the real signal of whether the module actually works, used by
+        the caller to decide health (not the coarse verify.selfcheck heuristic)."""
         self.emit("Repair confirmed. Re-fetching the latest agenda to populate the module."
                   if repair else "Scrape config is live. Searching for the first agenda to populate the module.",
                   "agenda.find_latest", f"initial agenda fetch for {slug}")
@@ -123,7 +141,7 @@ class _ScraperBase(BaseAgent):
         if not found["ok"]:
             self.emit("Could not find an agenda on the first try — the Checking Agent will retry automatically.",
                       "agenda.find_latest", found["detail"])
-            return
+            return False
         d = found["data"]
         title = d.get("meetingTitle")
         if title and title != "Council Meeting":
@@ -139,9 +157,10 @@ class _ScraperBase(BaseAgent):
                       "agenda.find_latest", found["detail"])
             # Expose agenda_text; the orchestrator runs summary/keyword/categorize.
             self.output["agenda_text"] = d.get("agendaText", "")
-        else:
-            self.emit("No specific meeting title found yet — the Checking Agent will populate it next run.",
-                      "agenda.find_latest", found["detail"])
+            return True
+        self.emit("No specific meeting title found yet — the Checking Agent will populate it next run.",
+                  "agenda.find_latest", found["detail"])
+        return False
 
 
 class ScraperCreateAgent(_ScraperBase):

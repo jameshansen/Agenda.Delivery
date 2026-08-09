@@ -14,7 +14,7 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { agentEvents } from "@/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, desc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -38,13 +38,22 @@ export async function GET(request: NextRequest) {
       };
 
       // ── Replay existing events from Postgres ─────────────
+      // Order by createdAt, NOT `sort` -- `sort` is
+      // `time.time()*1000 % 1_000_000` (wraps every ~16.7 minutes), so
+      // ordering by it alone across more than one run/timespan produces an
+      // effectively arbitrary order. createdAt is monotonic; `sort` is only
+      // a same-instant tie-breaker.
       try {
         const q = db.select().from(agentEvents);
         const rows = moduleId
-          ? await q.where(eq(agentEvents.moduleId, moduleId)).orderBy(asc(agentEvents.sort))
+          ? await q.where(eq(agentEvents.moduleId, moduleId))
+              .orderBy(asc(agentEvents.createdAt), asc(agentEvents.sort))
           : runId
-            ? await q.where(eq(agentEvents.runId, runId)).orderBy(asc(agentEvents.sort))
-            : await q.orderBy(asc(agentEvents.sort)).limit(50);
+            ? await q.where(eq(agentEvents.runId, runId))
+                .orderBy(asc(agentEvents.createdAt), asc(agentEvents.sort))
+            : (
+                await q.orderBy(desc(agentEvents.createdAt), desc(agentEvents.sort)).limit(50)
+              ).reverse();
         for (const e of rows) {
           send({
             runId: e.runId ?? "replay",

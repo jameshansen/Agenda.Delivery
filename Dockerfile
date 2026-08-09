@@ -53,7 +53,11 @@ USER nextjs
 
 EXPOSE 3000
 
+# Use 127.0.0.1, not localhost -- alpine resolves localhost to ::1 (IPv6)
+# first, and Node's HOSTNAME=0.0.0.0 only binds the IPv4 wildcard, so
+# `wget http://localhost:.../` gets "connection refused" even though the
+# server is up and reachable from other containers on the docker network.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --quiet --spider http://localhost:3000/api/health || exit 1
+    CMD wget --quiet --spider http://127.0.0.1:3000/api/health || exit 1
 
 CMD ["node", "server.js"]

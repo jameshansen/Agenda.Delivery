@@ -25,18 +25,20 @@ class CheckingAgent(BaseAgent):
         self.emit(f"Checking if {mod['name']} has posted a new agenda.",
                   "schedule.predict", "cadence: biweekly, confidence 0.91 → poll now")
 
+        # verify.selfcheck is a cheap, coarse heuristic (keyword matches on
+        # raw HTML) -- informational only. It does NOT gate whether we try
+        # to find the agenda: agenda_find_latest is the real, authoritative
+        # check (it has its own static->render->browser escalation and can
+        # succeed on sites this quick check would wrongly reject, e.g. JS
+        # portals or a slightly-off selector). Only agenda_find_latest's own
+        # result determines health.
         check = tools.verify_selfcheck(slug)
-        if not check["ok"]:
-            self.emit("Structure mismatch detected — the agenda page may have moved.",
-                      "verify.selfcheck", check["detail"])
-            db.execute("UPDATE module SET health='broken', last_checked=now() WHERE id=%s",
-                       (mod["id"],))
-            self.emit("Flagged the module as broken and paged the Repair Agent.",
-                      "verify.selfcheck", "checks failed — repair needed")
-            return "Module broken — repair agent needed"
-
-        self.emit("Verified the agenda page is accessible and selectors match.",
-                  "verify.selfcheck", check["detail"])
+        self.emit(
+            "Verified the agenda page is accessible and selectors match."
+            if check["ok"] else
+            "Quick structure check flagged possible drift — trying the full agenda search anyway.",
+            "verify.selfcheck", check["detail"],
+        )
 
         self.emit("Searching for the most recent meeting on the agenda listing page.",
                   "agenda.find_latest", f"fetching {mod['source_url']}")
