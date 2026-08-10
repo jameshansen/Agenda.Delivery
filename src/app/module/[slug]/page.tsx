@@ -90,7 +90,7 @@ export default async function ModulePage({
             </span>
             <span className="min-w-0">
               <span className="block text-sm font-semibold text-ink">
-                {m.latestCouncilMeeting.pdfUrl ? "Download the latest council meeting agenda" : "View the latest council meeting agenda"}
+                {m.latestCouncilMeeting.pdfUrl ? "Download the latest meeting agenda" : "View the latest meeting agenda"}
               </span>
               <span className="block truncate text-sm text-ink-soft">
                 {m.latestCouncilMeeting.title} · {m.latestCouncilMeeting.date} · {m.latestCouncilMeeting.pages} pages

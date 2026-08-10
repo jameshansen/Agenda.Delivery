@@ -476,8 +476,16 @@ def _static_find_latest(slug):
             "page. Pick the SINGLE most recent PAST meeting (date on or before today) "
             "that has an agenda. Prefer a direct agenda PDF; otherwise the meeting's "
             "detail page. IGNORE navigation, 'skip to content', login, search, and "
-            "generic schedule/calendar overview links. "
-            'Return JSON {"url":..., "title":..., "date":"YYYY-MM-DD" or null, "is_pdf":bool}. '
+            "generic schedule/calendar overview links. Also separately identify the "
+            "most recent REGULAR COUNCIL MEETING specifically (not a public hearing, "
+            "committee meeting, or special/closed session) -- this may be the SAME "
+            "link as the primary pick, an OLDER link, or null if none of the links "
+            "look like a regular council meeting. A body's most recent agenda item "
+            "is often something other than its regular meeting (a public hearing, a "
+            "committee), but the regular meeting agenda is usually still listed "
+            "further down the same page and should be surfaced too. "
+            'Return JSON {"url":..., "title":..., "date":"YYYY-MM-DD" or null, "is_pdf":bool, '
+            '"council_meeting": {"url":..., "title":..., "date":"YYYY-MM-DD" or null, "is_pdf":bool} or null}. '
             'If no link is a real specific meeting, return {"url": null}.'
         )
         user = json.dumps({"today": today, "links": candidates})
@@ -486,6 +494,10 @@ def _static_find_latest(slug):
         except Exception:
             picked = {}
         cand_urls = {c["url"] for c in candidates}
+        council_meeting = picked.get("council_meeting") if isinstance(picked, dict) else None
+        if (not isinstance(council_meeting, dict) or not council_meeting.get("url")
+                or council_meeting["url"] not in cand_urls):
+            council_meeting = None
         purl = picked.get("url") if isinstance(picked, dict) else None
         if not purl or purl not in cand_urls:
             # LLM abstained or hallucinated — fall back to the best dated candidate.
@@ -544,6 +556,31 @@ def _static_find_latest(slug):
         if not final and not pdf_links:
             return {'ok': False, 'detail': 'meeting found but no agenda content', 'data': {}}
 
+        # The LLM separately flagged the most recent REGULAR council meeting
+        # (may differ from the primary pick above, e.g. the primary is a
+        # public hearing). Resolve it lightly (title/date/pdf only, no full
+        # text extraction -- it's stored for visibility/history, not
+        # summarized) so it doesn't get lost when it isn't the newest item.
+        additional_meeting = None
+        if council_meeting and council_meeting["url"] != url:
+            try:
+                cm_url = council_meeting["url"]
+                cm_title = (council_meeting.get("title") or "").strip() or "Regular Council Meeting"
+                cm_is_pdf = bool(council_meeting.get("is_pdf")) or cm_url.lower().endswith(".pdf")
+                cm_pdf_url = cm_url if cm_is_pdf else None
+                if not cm_is_pdf:
+                    cm_res = _get(cm_url)
+                    cm_pdfs = _find_pdfs(cm_res.text, cm_url)
+                    cm_pdf_url = cm_pdfs[0] if cm_pdfs else None
+                additional_meeting = {
+                    'meetingTitle': cm_title,
+                    'meetingUrl': cm_url,
+                    'meetingDate': council_meeting.get("date"),
+                    'pdfUrl': cm_pdf_url,
+                }
+            except Exception as e:
+                print(f'Skipping additional council-meeting resolution: {e}')
+
         meeting_date = mdate if mdate else None
         detail_msg = (f'Found latest meeting: "{title}" ({meeting_date or "date unknown"}) '
                       f'at {url}, {len(pdf_links)} PDF link(s), {len(final)} chars')
@@ -560,10 +597,46 @@ def _static_find_latest(slug):
                 'agendaText': final,
                 'pdfLinks': pdf_links,
                 'listingUrl': effective_url,
+                'additionalMeeting': additional_meeting,
             },
         }
     except Exception as e:
         return {'ok': False, 'detail': f'agenda.find_latest failed: {e}', 'data': {}}
+
+
+def record_additional_council_meeting(module_id: str, additional: dict | None, emit) -> None:
+    """agenda_find_latest may separately surface the most recent REGULAR
+    council meeting when the primary find was something else (a public
+    hearing, a committee meeting) -- e.g. Township of Langley's newest
+    posted item is a public hearing, but its last actual council meeting
+    is still listed on the same page and should stay visible/categorized
+    rather than being silently dropped. Already known to be a council
+    meeting by construction (that's what agenda_find_latest was asked to
+    identify), so kind is set directly instead of waiting on the
+    Categorization Agent (which only ever classifies the single newest
+    row by date). Shared between the checking and scraper agent
+    containers, which cannot import each other's code."""
+    if not additional or not additional.get("meetingTitle"):
+        return
+    mdate_iso = additional.get("meetingDate")
+    if mdate_iso:
+        try:
+            mdate = datetime.fromisoformat(mdate_iso.replace("Z", "+00:00"))
+            mdate = mdate.astimezone(timezone.utc).replace(tzinfo=None)
+        except ValueError:
+            mdate = datetime.now(timezone.utc).replace(tzinfo=None)
+    else:
+        mdate = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.execute(
+        """INSERT INTO meeting (module_id, date, title, kind, pages, pdf_url, meeting_url)
+           VALUES (%s,%s,%s,'Council Meeting',0,%s,%s)
+           ON CONFLICT (module_id, date, title) DO NOTHING""",
+        (module_id, mdate, additional["meetingTitle"],
+         additional.get("pdfUrl"), additional.get("meetingUrl")),
+    )
+    if emit:
+        emit(f'Also found the last regular council meeting: "{additional["meetingTitle"]}".',
+             "agenda.find_latest", "surfaced alongside the primary (non-council) meeting")
 
 
 def _capture_screenshot(sid: str) -> str | None:

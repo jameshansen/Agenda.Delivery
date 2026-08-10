@@ -84,6 +84,8 @@ class CheckingAgent(BaseAgent):
             self.emit("No new agendas since last check — the latest meeting is already recorded.",
                       None, "no action needed")
 
+        tools.record_additional_council_meeting(mod["id"], d.get("additionalMeeting"), self.emit)
+
         db.execute(
             "UPDATE module SET health='healthy', last_updated=now(), last_checked=now() WHERE id=%s",
             (mod["id"],))

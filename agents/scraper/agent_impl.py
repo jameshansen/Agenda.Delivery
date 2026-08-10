@@ -163,6 +163,7 @@ class _ScraperBase(BaseAgent):
             self.emit(f'{"Post-repair: found" if repair else "Found"} and recorded '
                       f'"{title}" ({len(d.get("pdfLinks") or [])} PDF links).',
                       "agenda.find_latest", found["detail"])
+            tools.record_additional_council_meeting(mod["id"], d.get("additionalMeeting"), self.emit)
             # Expose agenda_text; the orchestrator runs summary/keyword/categorize.
             self.output["agenda_text"] = d.get("agendaText", "")
             return True
