@@ -4,6 +4,8 @@ import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/db";
 import { users, accounts, sessions, verificationTokens } from "@/db/schema";
 
+const IS_HTTPS = (process.env.NEXTAUTH_URL ?? process.env.AUTH_URL ?? "").startsWith("https://");
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(db, {
     usersTable: users,
@@ -28,8 +30,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        // Set Secure flag only in production (HTTPS)
-        secure: process.env.NODE_ENV === "production",
+        // Derived from NEXTAUTH_URL's protocol, not NODE_ENV: this app runs
+        // with NODE_ENV=production in docker-compose even for local
+        // HTTP-only testing (nginx does no TLS locally), and a browser
+        // silently drops a Secure cookie set over plain HTTP -- see the
+        // matching fix in src/lib/session.ts for the OTP sign-in path.
+        secure: IS_HTTPS,
       },
     },
     callbackUrl: {
@@ -53,6 +59,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     session({ session, user }) {
       session.user.id = user.id;
+      // @ts-expect-error -- phone isn't part of NextAuth's default User shape.
+      session.user.phone = (user as typeof users.$inferSelect).phone ?? null;
       return session;
     },
   },

@@ -10,6 +10,8 @@ export default function SubscribeCard({
   moduleSlug,
   rss,
   isLoggedIn,
+  accountEmail,
+  accountPhone,
 }: {
   moduleName: string;
   moduleSlug: string;
@@ -18,6 +20,8 @@ export default function SubscribeCard({
    * in one click. Guests go through /signup to verify a new contact first
    * rather than silently recording an unverified email/phone. */
   isLoggedIn: boolean;
+  accountEmail: string | null;
+  accountPhone: string | null;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -25,6 +29,22 @@ export default function SubscribeCard({
   const [done, setDone] = useState<"email" | "text" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  async function handleAccount(channel: "email" | "text") {
+    const contact = channel === "email" ? accountEmail : accountPhone;
+    if (!contact) return;
+    setPending(true);
+    setError(null);
+    try {
+      await subscribe({ slug: moduleSlug, channel, contact });
+      setDone(channel);
+    } catch (err) {
+      console.error("[SubscribeCard] subscribe failed:", err);
+      setError("Couldn't subscribe just now. Try again.");
+    } finally {
+      setPending(false);
+    }
+  }
 
   async function handle(channel: "email" | "text") {
     const contact = channel === "email" ? email : phone;
@@ -82,6 +102,44 @@ export default function SubscribeCard({
         >
           Manage
         </button>
+      </div>
+    );
+  }
+
+  if (isLoggedIn && (accountEmail || accountPhone)) {
+    return (
+      <div className="rounded-xl border border-black/10 bg-white/50 p-5">
+        <p className="text-lg">Subscribe</p>
+        <p className="mt-1 text-sm text-ink-soft">
+          Get every new agenda summarized, sent to your account.
+        </p>
+        {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          {accountEmail && (
+            <button
+              onClick={() => handleAccount("email")}
+              disabled={pending}
+              className="rounded-lg bg-green px-4 py-2 text-sm text-paper hover:opacity-90 disabled:opacity-50"
+            >
+              Subscribe by email ({accountEmail})
+            </button>
+          )}
+          {accountPhone && (
+            <button
+              onClick={() => handleAccount("text")}
+              disabled={pending}
+              className="rounded-lg border border-green px-4 py-2 text-sm text-green hover:bg-green hover:text-paper disabled:opacity-50"
+            >
+              Subscribe by text ({accountPhone})
+            </button>
+          )}
+          <a
+            href={rss}
+            className="ml-auto flex items-center gap-1.5 text-sm text-ink-soft hover:text-green"
+          >
+            <span className="text-amber-500">●</span> RSS
+          </a>
+        </div>
       </div>
     );
   }

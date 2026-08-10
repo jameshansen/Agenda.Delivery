@@ -171,6 +171,8 @@ export default async function ModulePage({
                 moduleSlug={m.slug}
                 rss={`/module/${m.slug}/rss.xml`}
                 isLoggedIn={!!session?.user?.id}
+                accountEmail={session?.user?.email ?? null}
+                accountPhone={(session?.user as { phone?: string | null } | undefined)?.phone ?? null}
               />
             </section>
 
