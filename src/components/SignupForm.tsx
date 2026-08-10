@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { requestOtpAction, verifyOtpAction } from "@/app/actions";
 import { isValidContact } from "@/lib/contact";
+
+const RESEND_COOLDOWN_SECS = 30;
 
 export default function SignupForm({
   initialChannel,
@@ -21,6 +23,25 @@ export default function SignupForm({
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  function startCooldown() {
+    setCooldown(RESEND_COOLDOWN_SECS);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      setCooldown((n) => {
+        if (n <= 1 && intervalRef.current) clearInterval(intervalRef.current);
+        return Math.max(0, n - 1);
+      });
+    }, 1000);
+  }
 
   async function sendCode() {
     if (!isValidContact(channel, contact)) {
@@ -39,6 +60,7 @@ export default function SignupForm({
       setError(res.error ?? "Couldn't send a code.");
       return;
     }
+    startCooldown();
     setStep("code");
   }
 
@@ -81,12 +103,21 @@ export default function SignupForm({
         >
           {pending ? "Verifying…" : "Verify & continue"}
         </button>
-        <button
-          onClick={() => setStep("contact")}
-          className="w-full text-center text-xs text-ink-soft underline underline-offset-2 hover:text-green"
-        >
-          Use a different email or phone
-        </button>
+        <div className="flex items-center justify-between text-xs">
+          <button
+            onClick={sendCode}
+            disabled={pending || cooldown > 0}
+            className="text-ink-soft underline underline-offset-2 hover:text-green disabled:no-underline disabled:opacity-50"
+          >
+            {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+          </button>
+          <button
+            onClick={() => setStep("contact")}
+            className="text-ink-soft underline underline-offset-2 hover:text-green"
+          >
+            Use a different email or phone
+          </button>
+        </div>
       </div>
     );
   }
