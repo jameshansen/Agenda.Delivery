@@ -63,11 +63,12 @@ class SpiderAgent(BaseAgent):
         lat, lng, region = gd.get("lat"), gd.get("lng"), gd.get("region")
 
         slug = _slugify(nxt["name"])
+        gov_type = nxt.get("kind") or "council"
         newmod = db.execute(
-            """INSERT INTO module (name, slug, region, source_url, health, followers, lat, lng)
-               VALUES (%s,%s,%s,%s,'healthy',0,%s,%s)
+            """INSERT INTO module (name, slug, region, source_url, health, followers, lat, lng, gov_type)
+               VALUES (%s,%s,%s,%s,'healthy',0,%s,%s,%s)
                ON CONFLICT (slug) DO NOTHING RETURNING id""",
-            (nxt["name"], slug, nxt.get("region") or "Unknown", nxt["url"], lat, lng),
+            (nxt["name"], slug, nxt.get("region") or "Unknown", nxt["url"], lat, lng, gov_type),
         )
         if not newmod:
             self.emit(f"{nxt['name']} already exists as a module (slug conflict) — skipping.",

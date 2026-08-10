@@ -314,7 +314,7 @@ export default function AgentsPage() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-6 py-8">
+    <main className="mx-auto w-full max-w-5xl px-6 py-8">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-3xl sm:text-4xl">Agents</h1>

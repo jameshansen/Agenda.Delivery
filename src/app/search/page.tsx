@@ -46,7 +46,7 @@ export default async function SearchPage({
   });
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-8">
+    <main className="mx-auto w-full max-w-5xl px-6 py-8">
       <h1 className="text-3xl sm:text-4xl">Search</h1>
 
       <form

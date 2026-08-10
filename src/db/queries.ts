@@ -32,6 +32,8 @@ export type ModuleListItem = {
   lat: number | null;
   /** Longitude from the geo.locate agent (null if not yet geolocated). */
   lng: number | null;
+  /** Broad entity kind: "council" or "organization". */
+  govType: string;
 };
 
 /** Extract the province/state from a region string like "Langley, British Columbia". */
@@ -89,7 +91,8 @@ export async function getModulesPaged(opts: {
   lat?: number;
   lng?: number;
   radiusKm?: number;
-}): Promise<{ items: ModuleListItem[]; total: number; provinces: string[] }> {
+  govTypes?: string[];
+}): Promise<{ items: ModuleListItem[]; total: number; provinces: string[]; govTypes: string[] }> {
   const page = Math.max(1, opts.page ?? 1);
   const perPage = Math.min(100, Math.max(1, opts.perPage ?? 20));
 
@@ -97,6 +100,9 @@ export async function getModulesPaged(opts: {
   const conditions = [];
   if (opts.province) {
     conditions.push(ilike(modules.region, `%${opts.province}%`));
+  }
+  if (opts.govTypes && opts.govTypes.length > 0) {
+    conditions.push(inArray(modules.govType, opts.govTypes));
   }
   if (opts.query) {
     const q = `%${opts.query}%`;
@@ -127,6 +133,12 @@ export async function getModulesPaged(opts: {
     provinceSet.add(extractProvince(r.region));
   }
   const provinces = [...provinceSet].sort();
+
+  // Get distinct gov types for the filter checkboxes
+  const govTypeRows = await db
+    .select({ govType: modules.govType })
+    .from(modules);
+  const govTypes = [...new Set(govTypeRows.map((r) => r.govType))].sort();
 
   // Get the page of results
   const rowsQ = db.select().from(modules);
@@ -200,9 +212,11 @@ export async function getModulesPaged(opts: {
         : null,
       lat: m.lat,
       lng: m.lng,
+      govType: m.govType,
     })),
     total: opts.lat != null ? filtered.length : Number(total),
     provinces,
+    govTypes,
   };
 }
 
@@ -225,6 +239,7 @@ export async function getModules(): Promise<ModuleListItem[]> {
     latestMeetingDate: null,
     lat: m.lat,
     lng: m.lng,
+    govType: m.govType,
   }));
 }
 
@@ -297,6 +312,7 @@ export async function getModuleBySlug(
     latestMeetingDate: null,
     lat: m.lat,
     lng: m.lng,
+    govType: m.govType,
     highlights: hs.map((h) => ({ tag: h.tag, text: h.text })),
     keywords: ks.map((k) => ({
       keyword: k.keyword,

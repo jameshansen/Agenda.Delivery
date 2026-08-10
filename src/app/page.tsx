@@ -21,6 +21,7 @@ export default async function Home({
     province?: string;
     near?: string;
     q?: string;
+    type?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -28,6 +29,7 @@ export default async function Home({
   const province = sp.province;
   const query = sp.q;
   const near = sp.near;
+  const selectedTypes = sp.type ? sp.type.split(",").filter(Boolean) : undefined;
 
   // Parse "near" param (lat,lng)
   let lat: number | undefined;
@@ -40,7 +42,7 @@ export default async function Home({
     }
   }
 
-  const { items, total, provinces } = await getModulesPaged({
+  const { items, total, provinces, govTypes } = await getModulesPaged({
     page,
     perPage: 100,
     province: province && province !== "all" ? province : undefined,
@@ -48,6 +50,7 @@ export default async function Home({
     lat,
     lng,
     radiusKm: lat != null ? 200 : undefined, // 200km default radius
+    govTypes: selectedTypes,
   });
 
   // Health breakdown for the overview strip -- real counts, not decoration.
@@ -130,7 +133,7 @@ export default async function Home({
         {/* Stats */}
         <div className="mx-auto mt-12 flex max-w-2xl flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm text-ink-soft">
           <span>
-            <strong className="text-ink">{total}</strong> councils monitored
+            <strong className="text-ink">{total}</strong> agendas monitored
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
@@ -140,14 +143,15 @@ export default async function Home({
       </section>
 
       {/* Filters bar + council list */}
-      <section className="mx-auto max-w-3xl px-6 pb-24">
+      <section className="mx-auto max-w-5xl px-6 pb-24">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-lg">councils monitored</h2>
+          <h2 className="text-lg">display regions</h2>
 
           {/* Province filter */}
           <form action="/" method="get" className="flex items-center gap-2">
             {query && <input type="hidden" name="q" value={query} />}
             {near && <input type="hidden" name="near" value={near} />}
+            {selectedTypes && <input type="hidden" name="type" value={selectedTypes.join(",")} />}
             <AutoSubmitSelect
               name="province"
               defaultValue={province ?? "all"}
@@ -158,8 +162,43 @@ export default async function Home({
             />
           </form>
 
+          {/* Gov-type checkbox filters, agents-page-style */}
+          {govTypes.length > 1 && (
+            <div className="flex items-center gap-2">
+              {govTypes.map((t) => {
+                const active = !selectedTypes || selectedTypes.includes(t);
+                const next = selectedTypes
+                  ? active
+                    ? selectedTypes.filter((x) => x !== t)
+                    : [...selectedTypes, t]
+                  : govTypes.filter((x) => x !== t);
+                const params = new URLSearchParams();
+                if (province) params.set("province", province);
+                if (query) params.set("q", query);
+                if (near) params.set("near", near);
+                if (next.length > 0 && next.length < govTypes.length) {
+                  params.set("type", next.join(","));
+                }
+                const href = `/?${params.toString()}`;
+                return (
+                  <Link
+                    key={t}
+                    href={href}
+                    className={`rounded-full border px-3 py-1 text-xs capitalize transition-colors ${
+                      active
+                        ? "border-green bg-green/10 text-green-dark"
+                        : "border-black/10 text-ink-soft hover:border-green/50"
+                    }`}
+                  >
+                    {t === "council" ? "Councils" : "Organizations"}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+
           <div className="ml-auto">
-            <GeoLocate label="councils near me" />
+            <GeoLocate label="Near Me" />
           </div>
         </div>
 
@@ -190,7 +229,7 @@ export default async function Home({
 
         {/* Results count */}
         <p className="mt-3 text-sm text-ink-soft">
-          {items.length} of {total} council{total !== 1 ? "s" : ""}
+          {items.length} of {total} agenda{total !== 1 ? "s" : ""}
         </p>
 
         {/* System health overview -- a real, live breakdown, not decoration */}
@@ -229,7 +268,7 @@ export default async function Home({
         {/* Recent activity rail -- the freshest finds, horizontally scrollable */}
         {recentActivity.length > 0 && (
           <div className="mt-6">
-            <h3 className="text-sm text-ink-soft">recently found</h3>
+            <h3 className="text-sm text-ink-soft">recent agendas</h3>
             <div className="mt-2 flex snap-x gap-3 overflow-x-auto pb-2">
               {recentActivity.map((m) => (
                 <Link

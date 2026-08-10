@@ -15,7 +15,7 @@ export default async function AccountPage() {
   const firstName = session.user.name?.split(" ")[0];
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-8">
+    <main className="mx-auto w-full max-w-5xl px-6 py-8">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl sm:text-4xl">

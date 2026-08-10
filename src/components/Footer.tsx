@@ -20,6 +20,14 @@ export default function Footer() {
           <Link href="/spider" className="hover:text-green">
             Spider
           </Link>
+          <a
+            href="https://jameshansen.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-green"
+          >
+            jameshansen.ai
+          </a>
         </nav>
       </div>
     </footer>

@@ -16,7 +16,7 @@ export default async function SpiderPage() {
   const created = candidates.filter((c) => c.status === "created").length;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-8">
+    <main className="mx-auto w-full max-w-5xl px-6 py-8">
       <div className="flex items-center gap-3">
         <h1 className="text-3xl sm:text-4xl">The Spider</h1>
         <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-sm text-emerald-700">

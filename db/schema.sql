@@ -92,6 +92,9 @@ CREATE TABLE IF NOT EXISTS module (
   last_checked  TIMESTAMP,
   lat           REAL,
   lng           REAL,
+  -- Broad entity kind for filtering ("council" | "organization"); set by the
+  -- Spider Agent from sources.toml's optional `kind` field, defaults to council.
+  gov_type      TEXT NOT NULL DEFAULT 'council',
   -- Seeded reference module, never touched by agents (Task 2 demo module).
   is_demo       BOOLEAN NOT NULL DEFAULT FALSE,
   created_at    TIMESTAMP NOT NULL DEFAULT now()

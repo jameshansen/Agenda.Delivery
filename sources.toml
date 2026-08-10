@@ -12,6 +12,10 @@
 #   url         — website root (the spider will crawl from here)
 #   region      — human-readable location ("City, State/Province")
 #   country     — ISO 3166-1 alpha-2 code (CA, US, …)
+#   kind        — optional, "council" (default) or "organization".
+#                 Use "organization" for regional districts, boards, and
+#                 other non-municipal governing bodies. Drives the
+#                 Councils/Organizations filter on the homepage.
 #
 # To add a council, append a [[source]] block.  The file is public
 # and version-controlled — anyone can submit a PR to add their council.
@@ -182,6 +186,13 @@ name = "City of Colwood"
 url = "https://www.colwood.ca"
 region = "Colwood, British Columbia"
 country = "CA"
+
+[[source]]
+name = "Metro Vancouver Regional District"
+url = "https://metrovancouver.org"
+region = "Metro Vancouver, British Columbia"
+country = "CA"
+kind = "organization"
 
 # — Alberta —
 [[source]]

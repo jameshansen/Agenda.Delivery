@@ -88,6 +88,8 @@ export const modules = pgTable("module", {
   // Geolocation from the Spider Agent's geo.locate tool
   lat: real("lat"),
   lng: real("lng"),
+  // Broad entity kind for filtering ("council" | "organization").
+  govType: text("gov_type").notNull().default("council"),
   // Seeded reference module (never touched by agents).
   isDemo: boolean("is_demo").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
