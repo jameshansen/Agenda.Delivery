@@ -57,6 +57,25 @@ def strip_markdown(text: str) -> str:
     return re.sub(r"\s{2,}", " ", text).strip()
 
 
+def looks_like_garbled_title(title: str) -> bool:
+    """Catch scraped meeting titles that are actually mangled page junk, not
+    a real title -- e.g. an unescaped HTML entity followed by a long run of
+    space-separated numbers (seen live on Maple Ridge: "Regular Council
+    Meeting&nbsp; ( 739 23 27 27 21 27 34 27 23 24 23 24 26 22 22 21 22 24
+    25 26 34 24 37 31 34 26 21 26 22" -- looks like an obfuscated-email/
+    JS char-code array that leaked into the scraped text). A real meeting
+    title is prose; this is neither prose nor a real date/number a title
+    would legitimately contain (an address, a bylaw number)."""
+    if not title:
+        return False
+    if re.search(r"&[a-zA-Z]+;", title):
+        return True
+    numeric_tokens = re.findall(r"(?<!\d)\d{1,3}(?!\d)", title)
+    if len(numeric_tokens) >= 6:
+        return True
+    return False
+
+
 def find_meeting_end(text: str) -> str:
     """Return text up to the first end-of-meeting marker (inclusive of its line)."""
     end_idx = len(text)

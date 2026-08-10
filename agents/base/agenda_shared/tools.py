@@ -16,6 +16,7 @@ import requests
 from . import db
 from .llm import complete, complete_json, summarize
 from .settings import AGENT_MODEL
+from .textutil import looks_like_garbled_title
 
 RENDERER_URL = os.environ.get("RENDERER_URL", "http://renderer:8000")
 BROWSER_URL = os.environ.get("BROWSER_URL", "http://browser:8000")
@@ -344,7 +345,14 @@ def _looks_like_a_real_meeting(result: dict) -> bool:
     if not result.get('ok'):
         return False
     d = result.get('data') or {}
-    return bool(d.get('meetingDate'))
+    if not d.get('meetingDate'):
+        return False
+    # A meeting with a real date but a garbled title (mangled HTML entities,
+    # leaked char-code arrays) is still wrong data, not a real find --
+    # see looks_like_garbled_title's docstring for the live example.
+    if looks_like_garbled_title(d.get('meetingTitle') or ''):
+        return False
+    return True
 
 
 def agenda_find_latest(slug, emit=None, model=None):
