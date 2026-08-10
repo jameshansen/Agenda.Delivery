@@ -672,6 +672,7 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
         trail = []
         found = False
         picked_url = picked_title = picked_date = None
+        council_candidate = None  # {url, title}, from the final page's own elements
         state = {}
         try:
             try:
@@ -765,6 +766,24 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                     picked_title = decision.get("title")
                     picked_date = decision.get("date")
                     found = True
+                    # Cheap, no-extra-LLM-call scan of this final page's own
+                    # elements for a distinct "council meeting" link -- mirrors
+                    # what _static_find_latest asks the LLM to do explicitly,
+                    # but here it's a plain keyword check on the same element
+                    # data already fetched this step, so a primary pick that's
+                    # a public hearing / committee meeting doesn't leave the
+                    # actual regular council meeting undiscoverable on this path.
+                    for e in raw_elements:
+                        raw_href = (e.get("href") or "")
+                        text = (e.get("text") or "")
+                        if not raw_href:
+                            continue
+                        href = urljoin(state.get("url") or start_url, raw_href)
+                        hay = (href + " " + text).lower()
+                        if href != picked_url and "council" in hay and (
+                                "agenda" in hay or _MONTH_RE.search(text) or _YEAR_RE.search(text)):
+                            council_candidate = {"url": href, "title": text.strip()[:200] or None}
+                            break
                     break
                 elif action == "fail":
                     found = False
@@ -839,6 +858,11 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
             "listingUrl": start_url,
             "platform": platform_guess,
             "navSteps": len(trail),
+            "additionalMeeting": (
+                {"meetingTitle": council_candidate["title"] or "Regular Council Meeting",
+                 "meetingUrl": council_candidate["url"], "meetingDate": None, "pdfUrl": None}
+                if council_candidate else None
+            ),
         }
 
         # Try to codify the path the browser just discovered as a fast,
