@@ -62,6 +62,11 @@ export async function GET(request: NextRequest) {
             action: e.action,
             tool: e.tool ?? undefined,
             detail: e.detail ?? undefined,
+            screenshot: e.screenshot ?? undefined,
+            prompt: e.prompt ?? undefined,
+            response: e.response ?? undefined,
+            model: e.model ?? undefined,
+            createdAt: e.createdAt.toISOString(),
             replayed: true,
           });
         }

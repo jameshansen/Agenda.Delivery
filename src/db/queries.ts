@@ -6,6 +6,7 @@ import {
   keywords,
   meetings,
   agentEvents,
+  agentRuns,
   subscriptions,
 } from "./schema";
 import { fmtDate } from "@/lib/format";
@@ -72,6 +73,10 @@ export type ModuleView = ModuleListItem & {
     action: string;
     tool?: string;
     detail?: string;
+    screenshot?: string;
+    prompt?: string;
+    response?: string;
+    model?: string;
   }[];
 };
 
@@ -126,7 +131,11 @@ export async function getModulesPaged(opts: {
   // Get the page of results
   const rowsQ = db.select().from(modules);
   if (where) rowsQ.where(where);
-  rowsQ.orderBy(desc(modules.lastUpdated)).limit(perPage).offset((page - 1) * perPage);
+  // NULLS LAST: a council that has never successfully found an agenda has
+  // last_updated = NULL forever (only last_checked moves on failed attempts).
+  // Postgres's default DESC order puts NULLs first, which would otherwise
+  // permanently pin every broken council to the top of the homepage.
+  rowsQ.orderBy(sql`${modules.lastUpdated} DESC NULLS LAST`).limit(perPage).offset((page - 1) * perPage);
   const rows = await rowsQ;
 
   // For geo filtering, if lat/lng provided, filter in JS (postgres earthdistance
@@ -202,7 +211,7 @@ export async function getModules(): Promise<ModuleListItem[]> {
   const rows = await db
     .select()
     .from(modules)
-    .orderBy(desc(modules.lastUpdated));
+    .orderBy(sql`${modules.lastUpdated} DESC NULLS LAST`);
   return rows.map((m) => ({
     slug: m.slug,
     name: m.name,
@@ -229,6 +238,19 @@ export async function getModuleBySlug(
     .limit(1);
   if (!m) return null;
 
+  // "Last completed run" should mean exactly that -- one run's worth of
+  // events, not every agent_event row this module has ever accumulated.
+  // Without scoping to a single run_id, the list only grows over the
+  // module's lifetime and repeats near-identical phrasing across many
+  // historical runs (e.g. "Crawling X to locate the agenda listing page"
+  // once per past check).
+  const [latestRun] = await db
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(eq(agentRuns.moduleId, m.id))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(1);
+
   const [hs, ks, mts, evs] = await Promise.all([
     db
       .select()
@@ -241,11 +263,21 @@ export async function getModuleBySlug(
       .from(meetings)
       .where(eq(meetings.moduleId, m.id))
       .orderBy(desc(meetings.date)),
-    db
-      .select()
-      .from(agentEvents)
-      .where(eq(agentEvents.moduleId, m.id))
-      .orderBy(asc(agentEvents.sort)),
+    latestRun
+      ? db
+          .select()
+          .from(agentEvents)
+          .where(and(eq(agentEvents.moduleId, m.id), eq(agentEvents.runId, latestRun.id)))
+          .orderBy(asc(agentEvents.sort))
+      : // Pre-Phase-4 events have no run_id -- fall back to the most recent
+        // handful rather than the module's entire history.
+        db
+          .select()
+          .from(agentEvents)
+          .where(eq(agentEvents.moduleId, m.id))
+          .orderBy(desc(agentEvents.sort))
+          .limit(10)
+          .then((rows) => rows.reverse()),
   ]);
 
   return {
@@ -317,6 +349,10 @@ export async function getModuleBySlug(
       action: e.action,
       tool: e.tool ?? undefined,
       detail: e.detail ?? undefined,
+      screenshot: e.screenshot ?? undefined,
+      prompt: e.prompt ?? undefined,
+      response: e.response ?? undefined,
+      model: e.model ?? undefined,
     })),
   };
 }

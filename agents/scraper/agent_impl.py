@@ -5,11 +5,13 @@ the URL is broken, infers selectors via LLM, saves config, self-verifies, and
 fetches the first agenda. The orchestrator routes on job["agent"]
 (scraper_create | scraper_repair).
 """
+import json
 from datetime import datetime, timezone
 
 from agenda_shared.agent import BaseAgent, module_by_slug
 from agenda_shared import db, tools
 from agenda_shared.llm import complete_json
+from agenda_shared.settings import AGENT_MODEL
 
 
 class _ScraperBase(BaseAgent):
@@ -51,18 +53,24 @@ class _ScraperBase(BaseAgent):
                   if not repair else "Inferring the new page structure and rewriting extraction selectors.",
                   "llm.repair", f"analysing {len(html_sample)} chars of HTML from {agenda_url}")
 
-        cfg = complete_json(
+        repair_system = (
             "You are a scraper configuration agent. Given a website URL and HTML, "
             "determine the best CSS selector to find agenda links. "
-            'Respond with JSON: {"agendaUrl":"...","linkSelector":"...","fileTypes":["pdf"],"hints":"..."}',
-            f"URL: {agenda_url}\nOld selector: {(old_cfg or {}).get('link_selector', 'none')}\n"
-            f"Found links: {', '.join(links[:10])}\nHTML sample:\n{html_sample[:3000]}",
+            'Respond with JSON: {"agendaUrl":"...","linkSelector":"...","fileTypes":["pdf"],"hints":"..."}'
         )
+        repair_user = (
+            f"URL: {agenda_url}\nOld selector: {(old_cfg or {}).get('link_selector', 'none')}\n"
+            f"Found links: {', '.join(links[:10])}\nHTML sample:\n{html_sample[:3000]}"
+        )
+        model_name = self.model() or AGENT_MODEL
+        cfg = complete_json(repair_system, repair_user, model=model_name)
         final_url = cfg.get("agendaUrl") or agenda_url
 
         self.emit(f"Saving the {'repaired ' if repair else ''}scraping configuration"
                   f"{f' (updated URL: {final_url})' if final_url != mod['source_url'] else '.'}",
-                  "db.save_config", f"selector: {cfg.get('linkSelector')}")
+                  "db.save_config", f"selector: {cfg.get('linkSelector')}",
+                  prompt=f"SYSTEM:\n{repair_system}\n\nUSER:\n{repair_user}",
+                  response=json.dumps(cfg, indent=2), model=model_name)
         tools.db_save_config(slug, final_url, cfg.get("linkSelector", ""),
                              ",".join(cfg.get("fileTypes") or ["pdf"]), cfg.get("hints", ""))
         if final_url != mod["source_url"]:
@@ -137,7 +145,7 @@ class _ScraperBase(BaseAgent):
         self.emit("Repair confirmed. Re-fetching the latest agenda to populate the module."
                   if repair else "Scrape config is live. Searching for the first agenda to populate the module.",
                   "agenda.find_latest", f"initial agenda fetch for {slug}")
-        found = tools.agenda_find_latest(slug)
+        found = tools.agenda_find_latest(slug, emit=self.emit, model=self.model())
         if not found["ok"]:
             self.emit("Could not find an agenda on the first try — the Checking Agent will retry automatically.",
                       "agenda.find_latest", found["detail"])

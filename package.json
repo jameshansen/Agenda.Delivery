@@ -10,16 +10,7 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx src/db/seed.ts",
-    "db:seed:reset": "tsx src/db/seed.ts --reset",
-    "db:seed-spider": "tsx scripts/seed-spider-queue.ts",
-    "db:studio": "drizzle-kit studio",
-    "test:scraper": "tsx scripts/test-scraper.ts",
-    "test:checking": "tsx scripts/test-checking.ts",
-    "test:summary": "tsx scripts/test-summary.ts",
-    "test:spider": "tsx scripts/test-spider.ts",
-    "test:pipeline": "tsx scripts/test-pipeline.ts",
-    "test:e2e": "tsx scripts/test-e2e.ts"
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

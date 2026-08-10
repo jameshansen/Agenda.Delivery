@@ -3,3 +3,4 @@ gunicorn==23.0.0
 selenium==4.27.1
 undetected-chromedriver==3.5.5
 requests==2.32.3
+Pillow==11.1.0

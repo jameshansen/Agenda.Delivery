@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { AgentEvent } from "@/data/modules";
+
+type AgentEvent = { agent: string; action: string; tool?: string; detail?: string; screenshot?: string };
 
 const PALETTE = [
   "bg-emerald-500",
@@ -73,6 +74,14 @@ export default function AgentLog({
                   </span>
                 )}
               </div>
+            )}
+            {e.screenshot && (
+              // eslint-disable-next-line @next/next/no-img-element -- data URI, no next/image optimization to gain
+              <img
+                src={e.screenshot}
+                alt={`Browser view: ${e.action}`}
+                className="mt-2 w-full max-w-xs rounded-lg border border-black/10"
+              />
             )}
           </div>
         );

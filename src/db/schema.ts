@@ -160,6 +160,13 @@ export const agentEvents = pgTable("agent_event", {
   tool: text("tool"),
   detail: text("detail"),
   sort: integer("sort").notNull().default(0),
+  /** Resized JPEG data URI of the browser at this nav step, demo purposes only. */
+  screenshot: text("screenshot"),
+  /** Full system+user LLM prompt / raw response for this step, when it was an LLM call. */
+  prompt: text("prompt"),
+  response: text("response"),
+  /** The Ollama model that served this step's LLM call (e.g. "glm-5.2"). */
+  model: text("model"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

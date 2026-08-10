@@ -40,8 +40,11 @@ class BaseAgent:
         return self.config().get("model") or fallback
 
     # -- events ------------------------------------------------
-    def emit(self, action: str, tool: str | None = None, detail: str | None = None):
-        emit_event(self.run_id, self.name, action, tool, detail, self.module_id)
+    def emit(self, action: str, tool: str | None = None, detail: str | None = None,
+             screenshot: str | None = None, prompt: str | None = None,
+             response: str | None = None, model: str | None = None):
+        emit_event(self.run_id, self.name, action, tool, detail, self.module_id,
+                   screenshot, prompt, response, model)
 
     # -- subclass entry point ----------------------------------
     def run(self, job: dict) -> str:

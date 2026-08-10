@@ -137,8 +137,25 @@ CREATE TABLE IF NOT EXISTS agent_event (
   tool       TEXT,
   detail     TEXT,
   sort       INTEGER NOT NULL DEFAULT 0,
+  -- Resized JPEG data URI of the browser at this nav step (demo/activity-
+  -- feed purposes only -- see tools._capture_screenshot). NULL for
+  -- non-browser-driven steps (most static-path agent actions).
+  screenshot TEXT,
+  -- Full system+user prompt / raw LLM response for this step, when it was
+  -- an actual LLM call -- lets the UI offer an "expand to view full
+  -- prompt/response" affordance without cluttering the short human-
+  -- readable action/detail fields most events use. NULL for non-LLM steps.
+  prompt TEXT,
+  response TEXT,
+  -- The Ollama model that actually served this step's LLM call (e.g.
+  -- "glm-5.2", "gemma4:31b"), when it was an LLM call. NULL otherwise.
+  model TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT now()
 );
+ALTER TABLE agent_event ADD COLUMN IF NOT EXISTS screenshot TEXT;
+ALTER TABLE agent_event ADD COLUMN IF NOT EXISTS prompt TEXT;
+ALTER TABLE agent_event ADD COLUMN IF NOT EXISTS response TEXT;
+ALTER TABLE agent_event ADD COLUMN IF NOT EXISTS model TEXT;
 CREATE INDEX IF NOT EXISTS agent_event_run_idx ON agent_event (run_id);
 CREATE INDEX IF NOT EXISTS agent_event_module_idx ON agent_event (module_id, created_at);
 
@@ -180,10 +197,19 @@ CREATE TABLE IF NOT EXISTS scrape_config (
   -- as a JSON array. Diagnostic + a starting point for repair; the cheap path
   -- (agenda_url) is tried first on every recurring check, this is the fallback.
   nav_recipe    TEXT,
+  -- LLM-authored Python `extract()` function, self-tested before saving,
+  -- that reproduces the browser-discovered path as a direct HTTP fetch
+  -- (no browser session needed). The fast path: run this first on every
+  -- check; only fall back to the browser nav loop when it fails, which
+  -- then regenerates it. See agenda_shared.script_runner.
+  extract_script TEXT,
+  script_updated_at TIMESTAMP,
   updated_at    TIMESTAMP NOT NULL DEFAULT now()
 );
 ALTER TABLE scrape_config ADD COLUMN IF NOT EXISTS platform TEXT;
 ALTER TABLE scrape_config ADD COLUMN IF NOT EXISTS nav_recipe TEXT;
+ALTER TABLE scrape_config ADD COLUMN IF NOT EXISTS extract_script TEXT;
+ALTER TABLE scrape_config ADD COLUMN IF NOT EXISTS script_updated_at TIMESTAMP;
 
 CREATE TABLE IF NOT EXISTS spider_candidate (
   id                     TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,

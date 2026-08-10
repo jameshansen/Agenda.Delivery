@@ -9,6 +9,7 @@ export type LiveEvent = {
   action: string;
   tool?: string;
   detail?: string;
+  screenshot?: string;
   replayed?: boolean;
 };
 
@@ -111,6 +112,14 @@ export default function AgentLogStream({
                   </span>
                 )}
               </div>
+            )}
+            {e.screenshot && (
+              // eslint-disable-next-line @next/next/no-img-element -- data URI, no next/image optimization to gain
+              <img
+                src={e.screenshot}
+                alt={`Browser view: ${e.action}`}
+                className="mt-2 w-full max-w-xs rounded-lg border border-black/10"
+              />
             )}
           </div>
         ))}

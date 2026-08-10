@@ -44,6 +44,11 @@ __pycache__/
 # stray local logs
 dev-server*.log
 
+# sensitive local notes / credentials pasted into root
+pixabay_api_key.txt
+SMS Email API.txt
+Development Notes*.txt.$
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

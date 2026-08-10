@@ -42,7 +42,7 @@ class CheckingAgent(BaseAgent):
 
         self.emit("Searching for the most recent meeting on the agenda listing page.",
                   "agenda.find_latest", f"fetching {mod['source_url']}")
-        found = tools.agenda_find_latest(slug)
+        found = tools.agenda_find_latest(slug, emit=self.emit, model=self.model())
         if not found["ok"]:
             self.emit("Could not find a recent meeting agenda — the listing page may have changed.",
                       "agenda.find_latest", found["detail"])

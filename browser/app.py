@@ -1,9 +1,12 @@
+import base64
+import io
 import os
 import time
 import threading
 import uuid
 
 from flask import Flask, request, jsonify
+from PIL import Image
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -24,8 +27,10 @@ CHROMEDRIVER_PATH = os.environ.get("CHROMEDRIVER_PATH")
 
 
 def _make_driver():
+    # Headful (not headless/--headless=new) under the entrypoint's Xvfb
+    # display: real rendering pipeline is a stronger anti-detection signal
+    # than either headless mode against Cloudflare-class bot checks.
     options = uc.ChromeOptions()
-    options.headless = True
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
@@ -272,6 +277,35 @@ def state(sid):
                 pass
 
 
+@app.route("/session/<sid>/screenshot", methods=["GET"])
+def screenshot(sid):
+    """A resized/recompressed JPEG data URI, not the raw PNG capture --
+    Selenium screenshots come back as full-resolution PNG (often 500KB+ for
+    a 1280x1600 page), and these get stored per-step in Postgres and pushed
+    over SSE to the live agent-activity UI, so a demo-quality thumbnail
+    (max 640px wide, JPEG q60, typically 15-40KB) is the right tradeoff --
+    it's for showing "here's what the browser saw", not forensic detail."""
+    with GLOBAL_LOCK:
+        entry = SESSIONS.get(sid)
+    if not entry:
+        return jsonify({"ok": False, "error": "no such session"}), 404
+    with entry["lock"]:
+        driver = entry["driver"]
+        try:
+            driver.switch_to.default_content()
+            png_bytes = driver.get_screenshot_as_png()
+            img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+            if img.width > 640:
+                ratio = 640 / img.width
+                img = img.resize((640, int(img.height * ratio)), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=60)
+            data_uri = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+            return jsonify({"ok": True, "screenshot": data_uri})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/session/<sid>/click", methods=["POST"])
 def click(sid):
     with GLOBAL_LOCK:
@@ -289,6 +323,7 @@ def click(sid):
     with entry["lock"]:
         driver = entry["driver"]
         try:
+            handles_before = driver.window_handles
             try:
                 _goto_frame(driver, frame_path)
             except Exception:
@@ -321,6 +356,25 @@ def click(sid):
                     pass
                 time.sleep(0.25)
             time.sleep(1.5)
+
+            # Many portal links (civicweb.net, legistar.com, etc.) are
+            # target="_blank" to a different domain -- the click opens a new
+            # tab/window that Selenium doesn't auto-follow, leaving the old
+            # window's url/title unchanged and the nav loop stuck reclicking
+            # the same link forever. If a new window appeared, follow it and
+            # close the one we came from -- the old tab is a dead end with
+            # nothing further to discover.
+            new_handles = [h for h in driver.window_handles if h not in handles_before]
+            if new_handles:
+                old_handle = driver.current_window_handle
+                try:
+                    driver.switch_to.window(old_handle)
+                    driver.close()
+                except Exception:
+                    pass
+                driver.switch_to.window(new_handles[-1])
+                entry["frame_map"] = {}
+
             try:
                 driver.switch_to.default_content()
             except Exception:

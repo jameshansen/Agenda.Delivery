@@ -14,7 +14,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 
 from . import db
-from .llm import complete_json, summarize
+from .llm import complete, complete_json, summarize
+from .settings import AGENT_MODEL
 
 RENDERER_URL = os.environ.get("RENDERER_URL", "http://renderer:8000")
 BROWSER_URL = os.environ.get("BROWSER_URL", "http://browser:8000")
@@ -346,25 +347,47 @@ def _looks_like_a_real_meeting(result: dict) -> bool:
     return bool(d.get('meetingDate'))
 
 
-def agenda_find_latest(slug):
-    """Find the latest agenda. Cheap static/rendered path first -- unless a
-    prior browser run already tagged this module as needing the browser
-    (scrape_config.platform set), in which case skip straight to it, since
-    the cheap path is known to fail or produce false positives there.
-    Escalates to the undetected-browser LLM nav loop when the cheap path
-    fails OR returns a result that doesn't look like a real, dated meeting.
-    Escalation records a reusable recipe (entry URL + platform tag) so
-    future checks route correctly without re-discovering this."""
+def agenda_find_latest(slug, emit=None, model=None):
+    """Find the latest agenda. Fastest path first: a previously self-tested,
+    LLM-authored extraction script (see generate_extract_script) -- pure
+    HTTP, no browser, no per-check LLM cost. If it's missing or its own
+    self-test fails (site changed), fall through to the cheap static/
+    rendered path, then -- unless a prior browser run already tagged this
+    module as needing the browser (scrape_config.platform set), in which
+    case skip straight to it -- escalate to the undetected-browser LLM nav
+    loop. A successful browser run regenerates the script, so a break in
+    the fast path self-heals rather than staying broken.
+
+    `emit`, if given, is a BaseAgent.emit-shaped callable
+    (action, tool=None, detail=None, screenshot=None, prompt=None,
+    response=None, model=None) -- passed through to browser_find_latest so
+    each real nav step (not just the overall result) shows up in the live
+    agent-activity feed, screenshot included. `model`, if given, is the
+    calling agent's configured model (self.model()), used for the nav
+    loop's own LLM decisions instead of silently falling back to the
+    global default."""
     row = db.one(
-        "SELECT sc.platform FROM scrape_config sc "
+        "SELECT sc.platform, sc.extract_script FROM scrape_config sc "
         "JOIN module m ON m.id = sc.module_id WHERE m.slug = %s", (slug,))
+
+    if row and row.get('extract_script'):
+        from .script_runner import run_extract_script
+        try:
+            script_result = run_extract_script(row['extract_script'])
+        except Exception as e:
+            script_result = {'ok': False, 'detail': f'script runner error: {e}', 'data': {}}
+        if _looks_like_a_real_meeting(script_result):
+            return script_result
+        print(f"[agenda_find_latest] saved script for {slug!r} no longer works "
+              f"({script_result.get('detail')}), falling back")
+
     if row and row.get('platform'):
-        return browser_find_latest(slug)
+        return browser_find_latest(slug, emit=emit, model=model)
 
     result = _static_find_latest(slug)
     if _looks_like_a_real_meeting(result):
         return result
-    browser_result = browser_find_latest(slug)
+    browser_result = browser_find_latest(slug, emit=emit, model=model)
     if browser_result.get('ok'):
         return browser_result
     # Neither path produced a trustworthy result. Do NOT fall back to the
@@ -535,8 +558,20 @@ def _static_find_latest(slug):
         return {'ok': False, 'detail': f'agenda.find_latest failed: {e}', 'data': {}}
 
 
+def _capture_screenshot(sid: str) -> str | None:
+    """A resized JPEG data URI of the current browser state, or None on any
+    failure -- screenshots are for the demo/activity-feed UI, never load-
+    bearing for the nav loop itself, so a failure here must never break it."""
+    try:
+        r = requests.get(f"{BROWSER_URL}/session/{sid}/screenshot", timeout=30)
+        d = r.json()
+        return d.get("screenshot") if d.get("ok") else None
+    except Exception:
+        return None
+
+
 # -- browser.find_latest (agentic nav loop, undetected browser) --
-def browser_find_latest(slug, max_steps=8):
+def browser_find_latest(slug, max_steps=8, emit=None, model=None):
     try:
         mod = db.one("SELECT * FROM module WHERE slug=%s", (slug,))
         if not mod:
@@ -583,12 +618,39 @@ def browser_find_latest(slug, max_steps=8):
                 except Exception:
                     links = {"pdfs": []}
 
-                elements = [{"ref": e.get("ref"), "tag": e.get("tag"), "text": (e.get("text") or "")[:200]}
-                            for e in (state.get("elements") or [])[:40]]
+                # Include href alongside text -- link text alone is often
+                # useless ("more", "view") while the href carries the real
+                # signal (a date, a document-type slug, a portal path).
+                # Prioritize elements inside iframes: portals (eSCRIBE, etc.)
+                # are commonly embedded as an iframe on an otherwise ordinary
+                # page, and that page's own header/footer/nav chrome (dozens
+                # of links) would otherwise fill the whole cap before any
+                # iframe content is ever seen.
+                raw_elements = sorted(
+                    state.get("elements") or [],
+                    key=lambda e: 0 if e.get("frame_path") else 1,
+                )
+                elements = [{"ref": e.get("ref"), "tag": e.get("tag"),
+                             "text": (e.get("text") or "")[:200],
+                             "href": (e.get("href") or "")[:200]}
+                            for e in raw_elements[:40]]
                 today = date.today().isoformat()
                 system = ("You are driving a real browser to find a council's most recent PUBLISHED (not future) "
-                          "meeting agenda. You see visible_text, elements, and pdf_links_seen. Respond JSON only: "
-                          '{"action":"click"|"goto"|"done"|"fail","ref":str|null,"url":str|null,"title":str|null,'
+                          "meeting AGENDA (the planned items for a meeting, not the minutes/outcomes of one -- "
+                          "if a site only offers minutes for past meetings and no agenda is retrievable, that's a "
+                          "clean fail, don't substitute minutes). Link text is often generic (\"more\", \"view\") -- "
+                          "use each element's href for the real signal (dates, document-type slugs like /agendas/ "
+                          "vs /minutes/, portal paths). If elements include a search/date input and no dated link "
+                          "is visible, you may \"type\" into it. IMPORTANT: current_url/current_title only reflect "
+                          "the outer page and will NOT change when a meeting portal (eSCRIBE, Legistar, etc.) is "
+                          "embedded as an iframe -- clicking an Agenda link inside one navigates the iframe, not "
+                          "the outer page, so don't click the same agenda link twice waiting for confirmation. "
+                          "As soon as elements or pdf_links_seen show a specific dated meeting's Agenda (HTML or "
+                          "PDF, not Minutes) link, respond done immediately with that href as url. "
+                          "You see visible_text, elements, and pdf_links_seen. "
+                          "Respond JSON only: "
+                          '{"action":"click"|"goto"|"type"|"done"|"fail","ref":str|null,"url":str|null,'
+                          '"text":str|null,"submit":bool|null,"title":str|null,'
                           '"date":"YYYY-MM-DD"|null,"reason":str}.')
                 user = json.dumps({
                     "today": today, "step": step,
@@ -598,12 +660,24 @@ def browser_find_latest(slug, max_steps=8):
                     "pdf_links_seen": (links.get("pdfs") or [])[:15],
                 })
                 try:
-                    decision = complete_json(system, user)
+                    decision = complete_json(system, user, model=model)
                 except Exception:
                     decision = {"action": "fail", "reason": "llm error"}
 
                 trail.append({k: decision.get(k) for k in ("action", "ref", "url", "reason")})
                 action = decision.get("action")
+
+                if emit:
+                    screenshot = _capture_screenshot(sid)
+                    emit(
+                        f"Step {step + 1}: {action} — {decision.get('reason') or ''}"[:300],
+                        "browser.nav",
+                        state.get("url"),
+                        screenshot=screenshot,
+                        prompt=f"SYSTEM:\n{system}\n\nUSER:\n{user}",
+                        response=json.dumps(decision, indent=2),
+                        model=model or AGENT_MODEL,
+                    )
 
                 if action == "done":
                     picked_url = decision.get("url") or state.get("url")
@@ -617,6 +691,16 @@ def browser_find_latest(slug, max_steps=8):
                 elif action == "click" and decision.get("ref"):
                     try:
                         requests.post(f"{BROWSER_URL}/session/{sid}/click", json={"ref": decision["ref"]}, timeout=90)
+                    except Exception:
+                        pass
+                    continue
+                elif action == "type" and decision.get("ref"):
+                    try:
+                        requests.post(f"{BROWSER_URL}/session/{sid}/type", json={
+                            "ref": decision["ref"],
+                            "text": decision.get("text") or "",
+                            "submit": bool(decision.get("submit")),
+                        }, timeout=90)
                     except Exception:
                         pass
                     continue
@@ -665,6 +749,28 @@ def browser_find_latest(slug, max_steps=8):
                 platform_guess = p
                 break
 
+        result_data = {
+            "meetingTitle": picked_title or "Council Meeting",
+            "meetingUrl": picked_url,
+            "meetingDate": picked_date,
+            "agendaText": final_text,
+            "pdfLinks": [picked_url] if is_pdf else [],
+            "listingUrl": start_url,
+            "platform": platform_guess,
+            "navSteps": len(trail),
+        }
+
+        # Try to codify the path the browser just discovered as a fast,
+        # LLM-authored HTTP-only script -- self-tested before being trusted.
+        # A live browser session is expensive (up to 8 LLM calls); if this
+        # succeeds, future checks skip the browser entirely. Best-effort:
+        # a None here just means we keep relying on the browser path.
+        extract_script = None
+        try:
+            extract_script = generate_extract_script(slug, trail, result_data)
+        except Exception as e:
+            print(f"[browser_find_latest] script generation skipped: {e}")
+
         # Persist start_url (the navigable entry point), NOT picked_url. picked_url
         # is often a specific document/PDF -- a dead end with no further links, so
         # storing it as agenda_url would strand both the cheap static retry and any
@@ -672,13 +778,17 @@ def browser_find_latest(slug, max_steps=8):
         try:
             if cfg:
                 db.execute(
-                    "UPDATE scrape_config SET agenda_url=%s, platform=%s, nav_recipe=%s, verified=TRUE, updated_at=now() WHERE module_id=%s",
-                    (start_url, platform_guess, json.dumps(trail), mod["id"]),
+                    "UPDATE scrape_config SET agenda_url=%s, platform=%s, nav_recipe=%s, "
+                    "extract_script=%s, script_updated_at=%s, verified=TRUE, updated_at=now() WHERE module_id=%s",
+                    (start_url, platform_guess, json.dumps(trail), extract_script,
+                     datetime.now(timezone.utc) if extract_script else None, mod["id"]),
                 )
             else:
                 db.execute(
-                    "INSERT INTO scrape_config (module_id, agenda_url, platform, nav_recipe, version, verified) VALUES (%s,%s,%s,%s,1,TRUE)",
-                    (mod["id"], start_url, platform_guess, json.dumps(trail)),
+                    "INSERT INTO scrape_config (module_id, agenda_url, platform, nav_recipe, "
+                    "extract_script, script_updated_at, version, verified) VALUES (%s,%s,%s,%s,%s,%s,1,TRUE)",
+                    (mod["id"], start_url, platform_guess, json.dumps(trail), extract_script,
+                     datetime.now(timezone.utc) if extract_script else None),
                 )
         except Exception as e:
             print(f"[browser_find_latest] recipe persist failed: {e}")
@@ -686,19 +796,137 @@ def browser_find_latest(slug, max_steps=8):
         return {
             "ok": True,
             "detail": f'Browser found latest meeting: "{picked_title or "Council Meeting"}" ({picked_date or "date unknown"}) at {picked_url}, {len(final_text)} chars' + (f" (PDF {pages} pages)" if pages else ""),
-            "data": {
-                "meetingTitle": picked_title or "Council Meeting",
-                "meetingUrl": picked_url,
-                "meetingDate": picked_date,
-                "agendaText": final_text,
-                "pdfLinks": [picked_url] if is_pdf else [],
-                "listingUrl": start_url,
-                "platform": platform_guess,
-                "navSteps": len(trail),
-            },
+            "data": result_data,
         }
     except Exception as e:
         return {"ok": False, "detail": f"browser_find_latest failed: {e}", "data": {}}
+
+
+def generate_extract_script(slug: str, trail: list, discovered: dict) -> str | None:
+    """Ask the LLM to codify a successful browser discovery as a fast,
+    HTTP-only Python script, self-test it, and return it only if the
+    self-test finds a real dated meeting. Never raises; None means
+    "keep using the browser path", not an error the caller must handle."""
+    from .script_runner import run_extract_script  # lazy: script_runner imports from this module
+
+    system_prompt = (
+        "You are a Python engineer who writes extraction scripts for council meeting agendas.\n"
+        "You are given a navigation trail produced by a real browser run and the final data it discovered.\n"
+        "Your job: write a single `def extract():` Python function that reproduces the SAME discovery\n"
+        "using ONLY plain HTTP via the `requests` library and the helper functions listed below.\n"
+        "You must NOT drive a browser, use selenium/playwright, or call any browser automation.\n"
+        "You must NOT import or use any third-party packages other than `requests`.\n"
+        "You MAY use stdlib `re`, `json`, `datetime`, `date`.\n"
+        "\n"
+        "AVAILABLE HELPERS (already defined in the module scope -- do NOT redefine them, just call them):\n"
+        "  _get(url, timeout=15) -> requests.Response\n"
+        "  _links_with_text(html, base) -> list[dict]   # each {url, text}\n"
+        "  _find_pdfs(html, base) -> list[str]\n"
+        "  _pdf_text(pdf_url, max_pages=20) -> tuple[str, int]\n"
+        "  _html_to_text(html) -> str\n"
+        "  render_html(url) -> tuple[str, str]           # (html, source_url); JS-render fallback for pages that need it\n"
+        "  extract_domain(url) -> str\n"
+        "\n"
+        "Do NOT invent any other helpers. Do NOT assume any other functions exist.\n"
+        "\n"
+        "REQUIRED `extract()` RETURN SHAPE (exact keys, exact types):\n"
+        "  {\n"
+        "    'ok': bool,                       # True only if a real, dated meeting agenda was found\n"
+        "    'detail': str,                    # short human description of the outcome\n"
+        "    'data': {\n"
+        "        'meetingTitle': str | None,\n"
+        "        'meetingUrl':   str | None,\n"
+        "        'meetingDate':  str | None,   # ISO-ish date string, e.g. '2024-03-12'; required to be truthy for success\n"
+        "        'agendaText':   str | None,\n"
+        "        'pdfLinks':     list[str],    # list of PDF urls found on the meeting/agenda page\n"
+        "        'listingUrl':   str | None,    # the listing/index page where the meeting link was found\n"
+        "    }\n"
+        "  }\n"
+        "On failure return {'ok': False, 'detail': str, 'data': {...with None / [] placeholders...}}.\n"
+        "\n"
+        "GUIDELINES:\n"
+        "- Reproduce the browser trail's logic: which URLs were visited, which link text was clicked to reach the meeting, which page contained the agenda/PDFs.\n"
+        "- Start from `listingUrl` if available, otherwise the trail's first goto/url.\n"
+        "- Use `_links_with_text` to find the meeting link by matching the trail's `meetingTitle` or the link text/reason from the trail steps.\n"
+        "- Use `_find_pdfs` on the meeting/agenda page; if PDFs exist and `agendaText` is missing, try `_pdf_text` on the first/primary PDF.\n"
+        "- If the page appears JS-rendered and `_get` returns empty/useless HTML, fall back to `render_html(url)`.\n"
+        "- Parse `meetingDate` from the page text / title using `re` and stdlib datetime; prefer ISO 'YYYY-MM-DD' format.\n"
+        "- Be defensive: wrap network calls in try/except, check response.status_code, handle missing text.\n"
+        "- The function must be self-contained except for the listed helpers and stdlib.\n"
+        "- Do NOT include any top-level code, tests, prints, or comments beyond minimal ones.\n"
+        "- Output ONLY the `def extract(): ...` function definition.\n"
+        "- Do NOT wrap it in markdown code fences.\n"
+        "- Do NOT add any explanation, prose, or backticks."
+    )
+    # Ground the LLM in the REAL page instead of making it guess HTML structure
+    # from the trail alone -- fetch the listing page it's meant to start from
+    # and hand over actual hrefs/text. This is what turned the browser nav
+    # loop's own hit rate around earlier in this same debugging session.
+    listing_url = discovered.get("listingUrl") or ""
+    sample_links = []
+    listing_html = ""
+    if listing_url:
+        try:
+            res = _get(listing_url)
+            listing_html = res.text
+            if _is_js_shell(listing_html):
+                rendered, _ = render_html(listing_url)
+                if rendered:
+                    listing_html = rendered
+            sample_links = _links_with_text(listing_html, listing_url)[:60]
+        except Exception as e:
+            print(f"[generate_extract_script] listing fetch failed for slug={slug!r}: {e}")
+
+    user_prompt = (
+        f"slug: {slug}\n\n"
+        f"navigation trail (JSON, what a browser did to find this manually):\n"
+        f"{json.dumps(trail, ensure_ascii=False, indent=2)}\n\n"
+        f"discovered data (JSON, what it found):\n{json.dumps(discovered, ensure_ascii=False, indent=2)}\n\n"
+        f"REAL links currently on the listing page ({listing_url!r}) -- write your matching "
+        f"logic against these actual hrefs/text, don't guess at HTML structure:\n"
+        f"{json.dumps(sample_links, ensure_ascii=False, indent=2)}\n\n"
+        "Write the `def extract():` function now. Respond with the Python code only -- no markdown, no fences, no explanation."
+    )
+
+    try:
+        raw = complete(system_prompt, user_prompt)
+    except Exception as e:
+        print(f"[generate_extract_script] LLM call failed for slug={slug!r}: {e}")
+        return None
+    if not raw or not raw.strip():
+        print(f"[generate_extract_script] empty LLM response for slug={slug!r}")
+        return None
+
+    script_text = raw.strip()
+    fence_match = re.search(r"```(?:python)?\s*\n?(.*?)```", script_text, re.DOTALL)
+    if fence_match:
+        script_text = fence_match.group(1).strip()
+    if "def extract(" not in script_text:
+        print(f"[generate_extract_script] no `def extract(` in response for slug={slug!r}")
+        return None
+
+    try:
+        result = run_extract_script(script_text, timeout_secs=20)
+    except Exception as e:
+        print(f"[generate_extract_script] run_extract_script raised for slug={slug!r}: {e}")
+        return None
+    if not isinstance(result, dict) or not result.get("ok"):
+        print(f"[generate_extract_script] self-test failed for slug={slug!r}: "
+              f"{result.get('detail') if isinstance(result, dict) else result}")
+        return None
+    test_data = result.get("data") or {}
+    if not test_data.get("meetingDate"):
+        print(f"[generate_extract_script] self-test missing meetingDate for slug={slug!r}")
+        return None
+    # A dated hit isn't enough -- "has a date" also matches a cancellation
+    # notice or a sub-committee's page, not the council agenda a human asked
+    # for. Reject the obvious non-agenda case cheaply (no LLM call needed).
+    title = (test_data.get("meetingTitle") or "").lower()
+    if "cancellation" in title or "cancelled" in title:
+        print(f"[generate_extract_script] self-test picked a cancellation notice, not an agenda, for slug={slug!r}")
+        return None
+
+    return script_text
 
 
 _GENERIC_TITLES = ("council calendar", "meetings and agendas", "agenda search",

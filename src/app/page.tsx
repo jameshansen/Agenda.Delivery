@@ -7,10 +7,10 @@ import type { Health } from "@/db/queries";
 
 export const dynamic = "force-dynamic";
 
-const HEALTH_BADGE: Record<Health, { label: string; className: string }> = {
-  healthy: { label: "healthy", className: "bg-emerald-500/10 text-emerald-700" },
-  repairing: { label: "repairing", className: "bg-amber-500/10 text-amber-700" },
-  broken: { label: "broken", className: "bg-rose-500/10 text-rose-700" },
+const HEALTH_BADGE: Record<Health, { label: string; dotClassName: string }> = {
+  healthy: { label: "healthy", dotClassName: "bg-emerald-500" },
+  repairing: { label: "repairing", dotClassName: "bg-amber-500" },
+  broken: { label: "broken", dotClassName: "bg-rose-500" },
 };
 
 export default async function Home({
@@ -42,7 +42,7 @@ export default async function Home({
 
   const { items, total, provinces } = await getModulesPaged({
     page,
-    perPage: 20,
+    perPage: 100,
     province: province && province !== "all" ? province : undefined,
     query,
     lat,
@@ -50,7 +50,27 @@ export default async function Home({
     radiusKm: lat != null ? 200 : undefined, // 200km default radius
   });
 
-  const totalPages = Math.max(1, Math.ceil(total / 20));
+  // Health breakdown for the overview strip -- real counts, not decoration.
+  const healthCounts = { healthy: 0, repairing: 0, broken: 0 } as Record<Health, number>;
+  for (const m of items) healthCounts[m.health]++;
+
+  // Most recently updated councils across the whole (unfiltered-by-region) result set.
+  const recentActivity = [...items]
+    .filter((m) => m.latestMeetingDate)
+    .sort((a, b) => (a.latestMeetingDate! < b.latestMeetingDate! ? 1 : -1))
+    .slice(0, 8);
+
+  // Group by province; the province with the most councils opens expanded,
+  // the rest collapse under <details> so a handful of out-of-region finds
+  // (e.g. the Spider Agent turning up a council outside BC) don't dilute
+  // the primary list.
+  const groups = new Map<string, typeof items>();
+  for (const m of items) {
+    const list = groups.get(m.province) ?? [];
+    list.push(m);
+    groups.set(m.province, list);
+  }
+  const sortedGroups = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
 
   return (
     <main className="flex-1 w-full">
@@ -168,88 +188,116 @@ export default async function Home({
           </div>
         )}
 
-        {/* Results */}
+        {/* Results count */}
         <p className="mt-3 text-sm text-ink-soft">
           {items.length} of {total} council{total !== 1 ? "s" : ""}
         </p>
 
-        <ul className="mt-4 space-y-3">
-          {items.map((m) => {
-            const badge = HEALTH_BADGE[m.health];
-            return (
-              <li
-                key={m.slug}
-                className="rounded-xl bg-row px-5 py-4 transition-colors hover:bg-row-hover"
+        {/* System health overview -- a real, live breakdown, not decoration */}
+        {items.length > 0 && (
+          <div className="mt-4 rounded-xl border border-black/8 bg-row px-4 py-3">
+            <div className="flex items-center justify-between text-xs text-ink-soft">
+              <span>system health</span>
+              <span>
+                {healthCounts.healthy} healthy · {healthCounts.repairing} repairing
+                {healthCounts.broken > 0 && ` · ${healthCounts.broken} broken`}
+              </span>
+            </div>
+            <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-black/5">
+              {healthCounts.healthy > 0 && (
+                <span
+                  className="bg-emerald-500"
+                  style={{ width: `${(healthCounts.healthy / items.length) * 100}%` }}
+                />
+              )}
+              {healthCounts.repairing > 0 && (
+                <span
+                  className="bg-amber-500"
+                  style={{ width: `${(healthCounts.repairing / items.length) * 100}%` }}
+                />
+              )}
+              {healthCounts.broken > 0 && (
+                <span
+                  className="bg-rose-500"
+                  style={{ width: `${(healthCounts.broken / items.length) * 100}%` }}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Recent activity rail -- the freshest finds, horizontally scrollable */}
+        {recentActivity.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-sm text-ink-soft">recently found</h3>
+            <div className="mt-2 flex snap-x gap-3 overflow-x-auto pb-2">
+              {recentActivity.map((m) => (
+                <Link
+                  key={m.slug}
+                  href={`/module/${m.slug}`}
+                  className="min-w-56 shrink-0 snap-start rounded-lg bg-row px-3 py-2.5 transition-colors hover:bg-row-hover"
+                >
+                  <div className="truncate text-sm font-semibold">{m.name}</div>
+                  <div className="mt-0.5 text-xs text-ink-soft">{m.latestMeetingDate}</div>
+                  {m.latestMeetingTitle && (
+                    <div className="mt-1 line-clamp-2 text-xs text-ink-soft/80">
+                      {m.latestMeetingTitle}
+                    </div>
+                  )}
+                </Link>
+              ))}
+              <Link
+                href="/agents"
+                className="flex min-w-32 shrink-0 snap-start items-center justify-center gap-1.5 rounded-lg border border-dashed border-black/15 px-3 py-2.5 text-sm text-ink-soft hover:border-green hover:text-green"
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
+                view all activity <i className="fa-solid fa-arrow-right text-xs" />
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Councils grouped by province -- the dominant province opens
+            expanded, everything else collapses so a handful of
+            out-of-region finds don't dilute the primary list. */}
+        <div className="mt-6 space-y-6">
+          {sortedGroups.map(([prov, mods], i) => (
+            <details key={prov} open={i === 0} className="group">
+              <summary className="flex cursor-pointer list-none items-center gap-2 py-2">
+                <i className="fa-solid fa-chevron-right text-xs text-ink-soft transition-transform group-open:rotate-90" />
+                <h2 className="text-lg">{prov}</h2>
+                <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs text-ink-soft">
+                  {mods.length}
+                </span>
+              </summary>
+              <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {mods.map((m) => {
+                  const badge = HEALTH_BADGE[m.health];
+                  return (
+                    <li key={m.slug}>
                       <Link
                         href={`/module/${m.slug}`}
-                        className="text-lg font-semibold hover:text-green"
+                        className="block rounded-lg bg-row px-3.5 py-2.5 transition-colors hover:bg-row-hover"
                       >
-                        {m.name}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${badge.dotClassName}`}
+                            title={badge.label}
+                          />
+                          <span className="truncate font-semibold">{m.name}</span>
+                        </div>
+                        <div className="mt-0.5 truncate text-xs text-ink-soft">
+                          {m.latestMeetingDate
+                            ? `${m.latestMeetingDate} · ${m.latestMeetingTitle ?? "agenda"}`
+                            : "no agenda found yet"}
+                        </div>
                       </Link>
-                      <span className={`rounded-full px-2 py-0.5 text-xs ${badge.className}`}>
-                        {badge.label}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 text-sm text-ink-soft">
-                      {m.region}
-                      {m.latestMeetingDate && (
-                        <span className="text-ink-soft/60">
-                          {" "}· latest council meeting {m.latestMeetingDate}
-                        </span>
-                      )}
-                    </div>
-                    {m.latestMeetingTitle && (
-                      <div className="mt-0.5 truncate text-sm text-ink-soft/80">
-                        <i className="fa-solid fa-file-lines mr-1 text-rust/60" />
-                        {m.latestMeetingTitle}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-5 text-sm">
-                    <Link href={`/module/${m.slug}`} className="hover:text-green">
-                      View
-                    </Link>
-                    <Link
-                      href={`/module/${m.slug}#subscribe`}
-                      className="hover:text-green"
-                    >
-                      Subscribe
-                    </Link>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <nav className="mt-8 flex items-center justify-center gap-2">
-            {page > 1 && (
-              <Link
-                href={`/?${buildQuery({ page: page - 1, province, query, near })}`}
-                className="rounded-lg border border-black/15 px-3 py-1.5 text-sm hover:border-green hover:text-green"
-              >
-                <i className="fa-solid fa-chevron-left" />
-              </Link>
-            )}
-            <span className="px-3 py-1.5 text-sm text-ink-soft">
-              page {page} of {totalPages}
-            </span>
-            {page < totalPages && (
-              <Link
-                href={`/?${buildQuery({ page: page + 1, province, query, near })}`}
-                className="rounded-lg border border-black/15 px-3 py-1.5 text-sm hover:border-green hover:text-green"
-              >
-                <i className="fa-solid fa-chevron-right" />
-              </Link>
-            )}
-          </nav>
-        )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          ))}
+        </div>
 
         {items.length === 0 && (
           <p className="mt-6 text-sm text-ink-soft">
@@ -263,19 +311,4 @@ export default async function Home({
       </section>
     </main>
   );
-}
-
-/** Build a URL query string from the filter params. */
-function buildQuery(opts: {
-  page: number;
-  province?: string;
-  query?: string;
-  near?: string;
-}): string {
-  const params = new URLSearchParams();
-  if (opts.page > 1) params.set("page", String(opts.page));
-  if (opts.province && opts.province !== "all") params.set("province", opts.province);
-  if (opts.query) params.set("q", opts.query);
-  if (opts.near) params.set("near", opts.near);
-  return params.toString();
 }

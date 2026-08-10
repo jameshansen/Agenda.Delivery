@@ -1,0 +1,36 @@
+Development Notes August 9 2026
+-----------------------------------------------
+
+SCRAPER FIXES:
+* For each council the agenda bot needs to find the latest council meeting agenda, if possible. For example on the Township of Langley the latest meeting is the public hearing, but the last council meeting agenda is on the site as well. It should have all the agendas back to that point, properly categorized.
+
+* The Scraper/Checking Agent need to make sure that the council meeting title makes sense. For example on the City of Maple Ridge the latest meeting is titled "Regular Council Meeting&nbsp; ( 739 23 27 27 21 27 34 27 23 24 23 24 26 22 22 21 22 24 25 26 34 24 37 31 34 26 21 26 22" - the AI needs to catch and prevent these kinds of things slipping through.
+
+SITE LOGIC FIXES:
+* Finally, all of our data is councils, but the header on the index page has other types. We need to restructure the index page to be more multipurpose:
+	- it should say "Near Me" instead of "councils near me"
+	- "31 councils monitored" => "31 agendas monitored"
+	- "31 of 31 agendas"
+	- "councils monitored" => "display regions"
+	- On the index page have checkbox style selectors like we have on the agents combined view "Councils" "Organizations" etc. to filter the list
+	- Still grouped by location, but just with that flexibility
+	- Scan the site for other similar issues
+
+* We need to add Metro Vancouver Regional District to the list, and also make the spider capable of finding these kinds of Governmental bodies as well
+
+UI FIXES:
+* Coverage Map doesn't show an actual map, fix this
+* Page container width changes per page, should be consistent
+* The alignment on the "never miss an update from your local <thing>" on the index is off, it's not centred, it's too far left. 
+* Add a link to jameshansen.ai in the footer (just with that as the text of the link as well)
+* Change "recently found" into a "recent agendas" and a cool list of new agendas, maybe like as a scrolling list that scrolls in place from bottom to top.
+* The index/landing page doesn't feel very rich. Build it into a really nice welcome page with an explanation of what the site is and what it does. Flesh this out with images using pixabay_api_key.txt
+
+NEXT STEPS:
+* Implement Login and panel for users to manage details and subscriptions
+* When a user is logged in, they can just subscribe to an agenda without entering phone/email. If they enter a phone email in guest mode, make them signup and prepulate the signup form.
+* For user signups, users can sign up with an email OR a phone number or both
+* I have created a free suprsend.com account 
+Server-Side Authentication
+ID: ws_apik_01KZN64G1BSBK8JXEYBERP6J7K
+KEY: SS.DN010wkg8kc9fVGSRk3EDsAQ-jOUYQN0ADnH2IWEgPM
