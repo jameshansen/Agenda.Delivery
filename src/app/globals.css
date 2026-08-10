@@ -37,3 +37,16 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-up { animation: fade-up 0.45s ease-out; }
+
+/* Recent-agendas ticker: content is rendered twice back-to-back, then
+   scrolled up exactly half its own height for a seamless bottom-to-top
+   loop. Pauses on hover so an item can actually be read/clicked. */
+@keyframes scroll-up {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-50%); }
+}
+.animate-scroll-up { animation: scroll-up linear infinite; }
+.animate-scroll-up:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-scroll-up { animation: none; }
+}

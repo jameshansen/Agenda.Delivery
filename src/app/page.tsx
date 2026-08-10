@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import RotatingWord from "@/components/RotatingWord";
+import RecentAgendasTicker from "@/components/RecentAgendasTicker";
 import GeoLocate from "@/components/GeoLocate";
 import AutoSubmitSelect from "@/components/AutoSubmitSelect";
 import { getModulesPaged } from "@/db/queries";
@@ -308,32 +309,20 @@ export default async function Home({
           </div>
         )}
 
-        {/* Recent activity rail -- the freshest finds, horizontally scrollable */}
+        {/* Recent agendas -- a bottom-to-top auto-scrolling ticker of the freshest finds */}
         {recentActivity.length > 0 && (
           <div className="mt-6">
-            <h3 className="text-sm text-ink-soft">recent agendas</h3>
-            <div className="mt-2 flex snap-x gap-3 overflow-x-auto pb-2">
-              {recentActivity.map((m) => (
-                <Link
-                  key={m.slug}
-                  href={`/module/${m.slug}`}
-                  className="min-w-56 shrink-0 snap-start rounded-lg bg-row px-3 py-2.5 transition-colors hover:bg-row-hover"
-                >
-                  <div className="truncate text-sm font-semibold">{m.name}</div>
-                  <div className="mt-0.5 text-xs text-ink-soft">{m.latestMeetingDate}</div>
-                  {m.latestMeetingTitle && (
-                    <div className="mt-1 line-clamp-2 text-xs text-ink-soft/80">
-                      {m.latestMeetingTitle}
-                    </div>
-                  )}
-                </Link>
-              ))}
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm text-ink-soft">recent agendas</h3>
               <Link
                 href="/agents"
-                className="flex min-w-32 shrink-0 snap-start items-center justify-center gap-1.5 rounded-lg border border-dashed border-black/15 px-3 py-2.5 text-sm text-ink-soft hover:border-green hover:text-green"
+                className="flex items-center gap-1.5 text-xs text-ink-soft hover:text-green"
               >
                 view all activity <i className="fa-solid fa-arrow-right text-xs" />
               </Link>
+            </div>
+            <div className="mt-2">
+              <RecentAgendasTicker items={recentActivity} />
             </div>
           </div>
         )}
