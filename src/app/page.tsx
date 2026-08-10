@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import RotatingWord from "@/components/RotatingWord";
 import GeoLocate from "@/components/GeoLocate";
 import AutoSubmitSelect from "@/components/AutoSubmitSelect";
@@ -139,6 +140,48 @@ export default async function Home({
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
             self-healing
           </span>
+        </div>
+      </section>
+
+      {/* About / how it works */}
+      <section className="mx-auto max-w-5xl px-6 pb-20">
+        <div className="grid gap-8 sm:grid-cols-3">
+          {[
+            {
+              img: "/images/civic-1.jpg",
+              alt: "A town hall building facade",
+              title: "AI agents watch every agenda page",
+              body: "A network of autonomous agents crawls council, board, and organization sites around the clock, looking for newly posted meeting agendas.",
+            },
+            {
+              img: "/images/civic-2.jpg",
+              alt: "A historic council building",
+              title: "Summarized, categorized, searchable",
+              body: "Every agenda gets a plain-language summary, key highlights, and topic tags automatically, so you can skim what matters in seconds.",
+            },
+            {
+              img: "/images/civic-3.jpg",
+              alt: "A modern city hall building",
+              title: "Self-healing when sites change",
+              body: "When a council redesigns its site or moves its meeting portal, the same agents notice, adapt, and keep tracking without manual fixes.",
+            },
+          ].map((f) => (
+            <div key={f.title} className="overflow-hidden rounded-2xl border border-black/8 bg-row/40">
+              <div className="relative h-36 w-full">
+                <Image
+                  src={f.img}
+                  alt={f.alt}
+                  fill
+                  sizes="(min-width: 640px) 33vw, 100vw"
+                  className="object-cover"
+                />
+              </div>
+              <div className="p-5">
+                <h3 className="font-semibold text-ink">{f.title}</h3>
+                <p className="mt-1.5 text-sm text-ink-soft">{f.body}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
