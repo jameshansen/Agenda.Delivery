@@ -24,13 +24,19 @@ export default function LoginPage() {
         </form>
 
         <div className="my-6 flex items-center gap-3 text-xs text-ink-soft">
-          <span className="h-px flex-1 bg-black/10" /> more soon{" "}
+          <span className="h-px flex-1 bg-black/10" /> or{" "}
           <span className="h-px flex-1 bg-black/10" />
         </div>
 
-        <p className="text-xs text-ink-soft">
-          Email and GitHub sign-in arrive with the next phase. Open source, no
-          dark patterns.
+        <Link
+          href="/signup"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-black/15 bg-white/60 px-4 py-3 hover:border-green hover:bg-white"
+        >
+          Continue with email or phone
+        </Link>
+
+        <p className="mt-6 text-xs text-ink-soft">
+          Open source, no dark patterns.
         </p>
       </div>
     </main>

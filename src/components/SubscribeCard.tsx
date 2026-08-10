@@ -1,21 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { subscribe } from "@/app/actions";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Accepts +1 604-555-0134, (604) 555-0134, etc.
-const PHONE_RE = /^\+?[\d\s()\-]{7,16}$/;
+import { EMAIL_RE, PHONE_RE } from "@/lib/contact";
 
 export default function SubscribeCard({
   moduleName,
   moduleSlug,
   rss,
+  isLoggedIn,
 }: {
   moduleName: string;
   moduleSlug: string;
   rss: string;
+  /** Signed-in users subscribe with their already-verified account contact
+   * in one click. Guests go through /signup to verify a new contact first
+   * rather than silently recording an unverified email/phone. */
+  isLoggedIn: boolean;
 }) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [done, setDone] = useState<"email" | "text" | null>(null);
@@ -28,15 +32,23 @@ export default function SubscribeCard({
       setError(`Enter ${channel === "email" ? "an email" : "a phone number"}.`);
       return;
     }
-    // Client-side validation
-    if (channel === "email" && !EMAIL_RE.test(contact)) {
-      setError("Please enter a valid email address.");
+    if (!(channel === "email" ? EMAIL_RE : PHONE_RE).test(contact)) {
+      setError(
+        channel === "email"
+          ? "Please enter a valid email address."
+          : "Please enter a valid phone number (e.g. +1 604 555 0134).",
+      );
       return;
     }
-    if (channel === "text" && !PHONE_RE.test(contact)) {
-      setError("Please enter a valid phone number (e.g. +1 604 555 0134).");
+
+    if (!isLoggedIn) {
+      // Guest: verify the contact via signup/OTP before it's ever recorded
+      // as a subscription, rather than trusting an unverified address.
+      const params = new URLSearchParams({ contact, channel, module: moduleSlug });
+      router.push(`/signup?${params.toString()}`);
       return;
     }
+
     setPending(true);
     setError(null);
     try {

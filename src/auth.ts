@@ -13,6 +13,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   }),
   providers: [Google],
   pages: { signIn: "/login" },
+  // Required for self-hosted deployments behind a reverse proxy (nginx here):
+  // without it, auth() rejects every request as "UntrustedHost" because it
+  // can't otherwise verify the incoming Host header matches NEXTAUTH_URL.
+  trustHost: true,
   session: {
     // Use secure cookies in production
     strategy: "database",

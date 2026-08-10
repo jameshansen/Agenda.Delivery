@@ -5,6 +5,7 @@ import AgentLog from "@/components/AgentLog";
 import AgentLogStream from "@/components/AgentLogStream";
 import SubscribeCard from "@/components/SubscribeCard";
 import { getModuleBySlug, type Health } from "@/db/queries";
+import { auth } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export default async function ModulePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const m = await getModuleBySlug(slug);
+  const [m, session] = await Promise.all([getModuleBySlug(slug), auth()]);
   if (!m) notFound();
 
   const health = HEALTH[m.health];
@@ -169,6 +170,7 @@ export default async function ModulePage({
                 moduleName={m.name}
                 moduleSlug={m.slug}
                 rss={`/module/${m.slug}/rss.xml`}
+                isLoggedIn={!!session?.user?.id}
               />
             </section>
 

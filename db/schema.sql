@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS "user" (
   name           TEXT,
   email          TEXT UNIQUE,
   email_verified TIMESTAMP,
+  phone          TEXT UNIQUE,
+  phone_verified TIMESTAMP,
   image          TEXT
 );
 
