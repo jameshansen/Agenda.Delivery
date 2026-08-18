@@ -10,8 +10,12 @@ export default function Footer() {
           monitoring
         </p>
         <nav className="flex gap-5">
-          {/* ponytail: repo link is a placeholder until the repo is public. */}
-          <a href="#" className="hover:text-green">
+          <a
+            href="https://github.com/jameshansen/Agenda.Delivery"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-green"
+          >
             GitHub
           </a>
           <Link href="/map" className="hover:text-green">

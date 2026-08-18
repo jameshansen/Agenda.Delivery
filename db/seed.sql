@@ -31,6 +31,12 @@ INSERT INTO agent_config (agent, display_name, system_prompt, model, schedule_se
  'gemma4:31b', NULL)
 ON CONFLICT (agent) DO NOTHING;
 
+-- Spider auto-discovery is off for now: we run a fixed set of BC
+-- municipalities. Set enabled=TRUE (or toggle in the admin panel) to
+-- resume discovery. Note: enabled=FALSE is what disables scheduling —
+-- a NULL schedule_secs falls back to the default interval, not "off".
+UPDATE agent_config SET enabled = FALSE WHERE agent = 'spider';
+
 -- ── Demo module (reference only; agents never touch it) ──
 INSERT INTO module (id, slug, name, region, source_url, health, followers, summary,
                     lat, lng, is_demo, last_updated)
