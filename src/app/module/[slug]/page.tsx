@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import AgentLog from "@/components/AgentLog";
 import AgentLogStream from "@/components/AgentLogStream";
 import SubscribeCard from "@/components/SubscribeCard";
 import FollowKeywordButton from "@/components/FollowKeywordButton";
@@ -270,14 +269,6 @@ export default async function ModulePage({
                     detail: e.detail,
                   }))}
                 />
-              </div>
-              <div className="mt-4 border-t border-black/5 pt-3">
-                <p className="text-xs font-semibold text-ink-soft">
-                  Last completed run
-                </p>
-                <div className="mt-2 max-h-[300px] overflow-y-auto pr-1">
-                  <AgentLog events={m.agentLog} />
-                </div>
               </div>
             </div>
           </aside>

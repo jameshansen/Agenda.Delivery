@@ -14,6 +14,11 @@ export const metadata: Metadata = {
   title: "agenda.delivery",
   description:
     "Never miss an update from your local council, committee, organization, non-profit, charity, or business. AI-summarized agendas, delivered.",
+  icons: {
+    icon: "/images/icon.png",
+    shortcut: "/images/icon.png",
+    apple: "/images/icon.png",
+  },
 };
 
 export default function RootLayout({
