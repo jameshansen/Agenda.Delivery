@@ -67,15 +67,22 @@ def _worker_loop() -> None:
 
 
 # ── Scheduler: enqueues pipelines + spider on their intervals ──
+KICK_DELAY_SECS = 120  # let postgres/redis/agents settle, then run the first pass
+
+
 def _scheduler_loop() -> None:
-    # Seed timers to "now" so a restart doesn't stampede every module +
-    # spider at boot; scheduled runs begin one interval later. Manual
-    # triggers (admin panel / API) drive activity in between.
-    now0 = time.time()
-    last: dict[str, float] = {"checking": now0, "spider": now0}
+    # Empty `last` => everything is due at boot. We fire the first pass once
+    # KICK_DELAY_SECS have elapsed (not a full interval later) so a redeploy
+    # doesn't postpone autonomous runs by 6h. Spider only enqueues one job, so
+    # a boot kick is harmless (and it's disabled anyway).
+    boot = time.time()
+    last: dict[str, float] = {}
     while True:
         try:
             now = time.time()
+            if now - boot < KICK_DELAY_SECS:
+                time.sleep(5)
+                continue
             cs = _schedule_secs("checking", CHECK_SECS_DEFAULT)
             if cs and now - last.get("checking", 0) >= cs:
                 mods = db.query("SELECT slug FROM module WHERE is_demo = FALSE")
