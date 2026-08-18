@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { requestOtpAction, verifyOtpAction } from "@/app/actions";
 import { isValidContact } from "@/lib/contact";
+import { SMS_ENABLED } from "@/lib/features";
 
 const RESEND_COOLDOWN_SECS = 30;
 
@@ -17,7 +18,7 @@ export default function SignupForm({
   moduleSlug?: string;
 }) {
   const router = useRouter();
-  const [channel, setChannel] = useState<"email" | "text">(initialChannel);
+  const [channel, setChannel] = useState<"email" | "text">(SMS_ENABLED ? initialChannel : "email");
   const [contact, setContact] = useState(initialContact);
   const [step, setStep] = useState<"contact" | "code">("contact");
   const [code, setCode] = useState("");
@@ -115,7 +116,7 @@ export default function SignupForm({
             onClick={() => setStep("contact")}
             className="text-ink-soft underline underline-offset-2 hover:text-green"
           >
-            Use a different email or phone
+            Use a different {SMS_ENABLED ? "email or phone" : "email"}
           </button>
         </div>
       </div>
@@ -124,20 +125,22 @@ export default function SignupForm({
 
   return (
     <div className="mt-8 space-y-3">
-      <div className="flex rounded-lg bg-field p-1 text-sm">
-        <button
-          onClick={() => setChannel("email")}
-          className={`flex-1 rounded-md py-1.5 ${channel === "email" ? "bg-white shadow-sm" : "text-ink-soft"}`}
-        >
-          Email
-        </button>
-        <button
-          onClick={() => setChannel("text")}
-          className={`flex-1 rounded-md py-1.5 ${channel === "text" ? "bg-white shadow-sm" : "text-ink-soft"}`}
-        >
-          Phone
-        </button>
-      </div>
+      {SMS_ENABLED && (
+        <div className="flex rounded-lg bg-field p-1 text-sm">
+          <button
+            onClick={() => setChannel("email")}
+            className={`flex-1 rounded-md py-1.5 ${channel === "email" ? "bg-white shadow-sm" : "text-ink-soft"}`}
+          >
+            Email
+          </button>
+          <button
+            onClick={() => setChannel("text")}
+            className={`flex-1 rounded-md py-1.5 ${channel === "text" ? "bg-white shadow-sm" : "text-ink-soft"}`}
+          >
+            Phone
+          </button>
+        </div>
+      )}
       <input
         type={channel === "email" ? "email" : "tel"}
         value={contact}

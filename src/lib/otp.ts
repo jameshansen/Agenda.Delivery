@@ -2,7 +2,8 @@ import crypto from "crypto";
 import { eq, and, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { verificationTokens } from "@/db/schema";
-import { sendOtp } from "@/lib/suprsend";
+import { sendMail } from "@/lib/email";
+import { SMS_ENABLED } from "@/lib/features";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const IDENTIFIER_PREFIX = "otp:";
@@ -28,7 +29,18 @@ export async function requestOtp(channel: "email" | "text", contact: string): Pr
     expires: new Date(Date.now() + CODE_TTL_MS),
   });
 
-  await sendOtp(channel, contact, code);
+  if (channel === "text") {
+    // ponytail: no SMS sender wired yet. Enable via SMS_ENABLED + a Twilio
+    // call here once a sender exists; until then the UI never offers "text".
+    if (!SMS_ENABLED) throw new Error("SMS is not enabled");
+    throw new Error("SMS sending is not implemented");
+  }
+
+  await sendMail(
+    contact,
+    "Your agenda.delivery code",
+    `Your agenda.delivery verification code is ${code}\n\nIt expires in 10 minutes. If you didn't request it, ignore this email.`,
+  );
 }
 
 /** Verify a submitted code. Single-use: deletes the token on any match attempt past expiry or success. */

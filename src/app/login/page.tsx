@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { signInGoogle } from "@/app/actions";
+import { SMS_ENABLED } from "@/lib/features";
 
 export default function LoginPage() {
   return (
@@ -32,7 +33,7 @@ export default function LoginPage() {
           href="/signup"
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-black/15 bg-white/60 px-4 py-3 hover:border-green hover:bg-white"
         >
-          Continue with email or phone
+          Continue with email{SMS_ENABLED ? " or phone" : ""}
         </Link>
 
         <p className="mt-6 text-xs text-ink-soft">

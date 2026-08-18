@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { subscribe } from "@/app/actions";
 import { EMAIL_RE, PHONE_RE } from "@/lib/contact";
+import { SMS_ENABLED } from "@/lib/features";
 
 export default function SubscribeCard({
   moduleName,
@@ -124,7 +125,7 @@ export default function SubscribeCard({
               Subscribe by email ({accountEmail})
             </button>
           )}
-          {accountPhone && (
+          {SMS_ENABLED && accountPhone && (
             <button
               onClick={() => handleAccount("text")}
               disabled={pending}
@@ -148,10 +149,10 @@ export default function SubscribeCard({
     <div className="rounded-xl border border-black/10 bg-white/50 p-5">
       <p className="text-lg">Subscribe</p>
       <p className="mt-1 text-sm text-ink-soft">
-        Get every new agenda summarized, by email or text.
+        Get every new agenda summarized, by email{SMS_ENABLED ? " or text" : ""}.
       </p>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className={`mt-4 grid gap-3 ${SMS_ENABLED ? "sm:grid-cols-2" : ""}`}>
         <input
           type="email"
           value={email}
@@ -159,13 +160,15 @@ export default function SubscribeCard({
           placeholder="you@email.com"
           className="h-10 rounded-lg bg-field px-3 outline-none focus:ring-2 focus:ring-green/30"
         />
-        <input
-          type="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="+1 604 555 0134"
-          className="h-10 rounded-lg bg-field px-3 outline-none focus:ring-2 focus:ring-green/30"
-        />
+        {SMS_ENABLED && (
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+1 604 555 0134"
+            className="h-10 rounded-lg bg-field px-3 outline-none focus:ring-2 focus:ring-green/30"
+          />
+        )}
       </div>
 
       {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
@@ -178,13 +181,15 @@ export default function SubscribeCard({
         >
           Subscribe by email
         </button>
-        <button
-          onClick={() => handle("text")}
-          disabled={pending}
-          className="rounded-lg border border-green px-4 py-2 text-sm text-green hover:bg-green hover:text-paper disabled:opacity-50"
-        >
-          Subscribe by text
-        </button>
+        {SMS_ENABLED && (
+          <button
+            onClick={() => handle("text")}
+            disabled={pending}
+            className="rounded-lg border border-green px-4 py-2 text-sm text-green hover:bg-green hover:text-paper disabled:opacity-50"
+          >
+            Subscribe by text
+          </button>
+        )}
         <a
           href={rss}
           className="ml-auto flex items-center gap-1.5 text-sm text-ink-soft hover:text-green"

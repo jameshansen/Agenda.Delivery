@@ -17,6 +17,7 @@ import { isValidContact } from "@/lib/contact";
 import { requestOtp, verifyOtp } from "@/lib/otp";
 import { createSession } from "@/lib/session";
 import { rateLimit } from "@/lib/rate-limit";
+import { SMS_ENABLED } from "@/lib/features";
 
 const MAX_CUSTOM_PROMPTS = 5;
 
@@ -45,6 +46,7 @@ export async function subscribe(input: {
     .where(eq(modules.slug, input.slug))
     .limit(1);
   if (!m) throw new Error("Unknown module");
+  if (input.channel === "text" && !SMS_ENABLED) throw new Error("SMS is not enabled");
 
   const session = await auth();
   await db.insert(subscriptions).values({
@@ -58,6 +60,9 @@ export async function subscribe(input: {
 /** Send a one-time code to an email or phone number for signup/sign-in. */
 export async function requestOtpAction(input: { channel: "email" | "text"; contact: string }) {
   const { channel, contact } = input;
+  if (channel === "text" && !SMS_ENABLED) {
+    return { ok: false, error: "Text messages aren't available yet. Please use email." };
+  }
   if (!isValidContact(channel, contact)) {
     return { ok: false, error: "That doesn't look like a valid contact." };
   }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SignupForm from "@/components/SignupForm";
+import { SMS_ENABLED } from "@/lib/features";
 
 export default async function SignupPage({
   searchParams,
@@ -7,7 +8,7 @@ export default async function SignupPage({
   searchParams: Promise<{ contact?: string; channel?: string; module?: string }>;
 }) {
   const sp = await searchParams;
-  const channel = sp.channel === "text" ? "text" : "email";
+  const channel = SMS_ENABLED && sp.channel === "text" ? "text" : "email";
 
   return (
     <main className="flex flex-1 items-center justify-center px-6 py-16">
@@ -20,7 +21,9 @@ export default async function SignupPage({
           <p className="mt-3 text-ink-soft">
             {sp.module
               ? "Verify your contact to finish subscribing."
-              : "Sign up with an email or phone number."}
+              : SMS_ENABLED
+                ? "Sign up with an email or phone number."
+                : "Sign up with an email address."}
           </p>
         </div>
 

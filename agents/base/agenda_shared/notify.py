@@ -6,11 +6,13 @@ call must never take down the summary/keyword/categorization fan-out that
 triggers it, so failures are logged and swallowed, never raised.
 """
 
+import smtplib
+from email.message import EmailMessage
+
 import requests
 
 from . import db, llm, settings
 
-SUPRSEND_EVENT_URL = "https://hub.suprsend.com/event/"
 AGENDA_CHAR_CAP = 8000
 
 
@@ -21,20 +23,25 @@ def _post_json(url: str, body: dict, headers: dict | None = None) -> None:
         print(f"[notify] post to {url} failed: {exc}")
 
 
-def _send_suprsend(contact: str, channel: str, properties: dict) -> None:
-    if not settings.SUPRSEND_API_KEY:
-        print("[notify] SUPRSEND_API_KEY unset; skipping email/SMS leg")
+def _send_email(to: str, subject: str, body: str) -> None:
+    """Relay through the host Postfix, which DKIM-signs and delivers."""
+    if not settings.SMTP_HOST:
+        print("[notify] SMTP_HOST unset; skipping email leg")
         return
-    body = {
-        "distinct_id": f"sub:{contact}",
-        "event": "agenda_updated",
-        "properties": {"channel": channel, **properties},
-    }
-    _post_json(SUPRSEND_EVENT_URL, body, {"Authorization": f"Bearer {settings.SUPRSEND_API_KEY}"})
+    msg = EmailMessage()
+    msg["From"] = settings.MAIL_FROM
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg.set_content(body)
+    try:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as s:
+            s.send_message(msg)
+    except Exception as exc:
+        print(f"[notify] email to {to} failed: {exc}")
 
 
 def notify_subscribers(module_id: str, module_name: str, module_slug: str, meeting_title: str) -> None:
-    """Email/SMS subscribers via SuprSend and push to per-user Discord/webhook targets."""
+    """Email subscribers via the host SMTP relay and push to per-user Discord/webhook targets."""
     try:
         subs = db.query(
             "SELECT user_id, channel, contact FROM subscription WHERE module_id = %s",
@@ -51,10 +58,22 @@ def notify_subscribers(module_id: str, module_name: str, module_slug: str, meeti
         "meeting_title": meeting_title,
     }
 
+    subject = f"New agenda: {module_name}"
+    body = (
+        f"{module_name} just posted a new agenda: {meeting_title}\n\n"
+        f"Read the AI summary: https://agenda.delivery/module/{module_slug}\n\n"
+        "You're receiving this because you subscribed on agenda.delivery."
+    )
+
     user_ids = {s["user_id"] for s in subs if s["user_id"] is not None}
     for sub in subs:
-        if sub["channel"] in ("email", "text"):
-            _send_suprsend(sub["contact"], sub["channel"], properties)
+        if sub["channel"] == "email":
+            _send_email(sub["contact"], subject, body)
+        elif sub["channel"] == "text":
+            # ponytail: SMS sender not wired. Enable settings.SMS_ENABLED and add
+            # a Twilio call here once a sender exists; skipped until then.
+            if settings.SMS_ENABLED:
+                print(f"[notify] SMS enabled but no sender wired for {sub['contact']}")
 
     # Per-user push targets fire once per user, for every module they're
     # subscribed to that just updated -- not once per subscription row.

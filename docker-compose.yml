@@ -65,8 +65,14 @@ services:
       <<: *agent-env
       CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-21600}
       SPIDER_INTERVAL_SECS: ${SPIDER_INTERVAL_SECS:-3600}
-      # notify.py's email/SMS leg (Discord/webhook pushes don't need this).
-      SUPRSEND_API_KEY: ${SUPRSEND_API_KEY:-}
+      # notify.py emails subscribers via the host Postfix relay (Discord/webhook
+      # pushes don't need this). "mailhost" maps to the host gateway below.
+      SMTP_HOST: ${SMTP_HOST:-mailhost}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      MAIL_FROM: ${MAIL_FROM:-agenda.delivery <update@agenda.delivery>}
+      SMS_ENABLED: ${SMS_ENABLED:-false}
+    extra_hosts:
+      - "mailhost:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,11 +149,16 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-me}
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
       AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
-      SUPRSEND_API_KEY: ${SUPRSEND_API_KEY:-}
+      # OTP emails relay through the host Postfix; "mailhost" = host gateway below.
+      SMTP_HOST: ${SMTP_HOST:-mailhost}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      MAIL_FROM: ${MAIL_FROM:-agenda.delivery <update@agenda.delivery>}
       # UI reaches the orchestrator for manual triggers (server-side only).
       ORCHESTRATOR_URL: http://orchestrator:8000
       NODE_ENV: production
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
+    extra_hosts:
+      - "mailhost:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
