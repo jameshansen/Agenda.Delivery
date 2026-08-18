@@ -1,10 +1,10 @@
 # agenda.delivery
 
+**Live at [agenda.delivery](https://agenda.delivery).**
+
 Never miss an update from your local **council, committee, organization, non-profit, charity, or business.**
 
 An open-source, AI-enabled service that monitors public agendas around the world, summarizes them, and delivers the parts you care about by email, text, or RSS. Agenda "Modules" are self-healing AI scrapers: they discover new councils, build their own scraping logic, detect when a site breaks, and repair themselves, with every step visible in the UI.
-
-This is also a **demo / portfolio project**, so the agents work in the open, the logs are meant to look good, and the whole thing is designed to show off a modern, scalable, observable cloud architecture.
 
 ## Stack
 
@@ -98,4 +98,4 @@ npm run test:scraper -- city-of-langley
 
 ## License
 
-Open source (license TBD).
+[GNU General Public License v3.0 or later](LICENSE) (GPL-3.0-or-later).
