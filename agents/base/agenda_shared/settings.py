@@ -14,3 +14,7 @@ SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "gemma4:31b")
 
 # Redis pub/sub channel the orchestrator relays to the UI as SSE.
 EVENTS_CHANNEL = "agent-events"
+
+# Phase 6 notification dispatch (email/SMS leg only; Discord/webhook pushes
+# don't need a key). Empty => notify.notify_subscribers skips that leg.
+SUPRSEND_API_KEY = os.environ.get("SUPRSEND_API_KEY", "")

@@ -25,6 +25,11 @@ export const users = pgTable("user", {
   phone: text("phone").unique(),
   phoneVerified: timestamp("phone_verified", { mode: "date" }),
   image: text("image"),
+  // Hashed (sha256) API key for GET /api/me/updates; apiKeyPrefix (first 8
+  // chars of the raw key) is shown in the account UI so a user can tell
+  // which key they're looking at without ever storing the raw value.
+  apiKeyHash: text("api_key_hash").unique(),
+  apiKeyPrefix: text("api_key_prefix"),
 });
 
 export const accounts = pgTable(
@@ -186,6 +191,59 @@ export const subscriptions = pgTable("subscription", {
   contact: text("contact").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+/* ---- Phase 6: push integrations & custom prompts ---- */
+
+export const pushTargetKindEnum = pgEnum("push_target_kind", ["discord", "webhook"]);
+
+/** One Discord webhook + one custom-URL push target per account. */
+export const pushTargets = pgTable(
+  "push_target",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: pushTargetKindEnum("kind").notNull(),
+    url: text("url").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("push_target_user_kind_uniq").on(t.userId, t.kind)],
+);
+
+/** Up to 5 per account (enforced in the server action, not the schema). */
+export const customPrompts = pgTable("custom_prompt", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  promptText: text("prompt_text").notNull(),
+  pushUrl: text("push_url"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/** Per-user follow of a module's keyword, with its own optional push URL. */
+export const keywordFollows = pgTable(
+  "keyword_follow",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    keywordId: text("keyword_id")
+      .notNull()
+      .references(() => keywords.id, { onDelete: "cascade" }),
+    pushUrl: text("push_url"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("keyword_follow_user_keyword_uniq").on(t.userId, t.keywordId)],
+);
 
 /* ---- Phase 4: Agent system tables ---- */
 

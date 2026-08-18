@@ -65,6 +65,8 @@ services:
       <<: *agent-env
       CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-21600}
       SPIDER_INTERVAL_SECS: ${SPIDER_INTERVAL_SECS:-3600}
+      # notify.py's email/SMS leg (Discord/webhook pushes don't need this).
+      SUPRSEND_API_KEY: ${SUPRSEND_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

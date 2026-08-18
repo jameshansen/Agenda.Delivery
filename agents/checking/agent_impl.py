@@ -66,6 +66,7 @@ class CheckingAgent(BaseAgent):
             (mod["id"],),
         )
         is_new = latest is None or (mdate is not None and latest["date"] < _naive(mdate))
+        self.output["is_new"] = is_new  # orchestrator gates notify dispatch on this
 
         if is_new:
             db.execute(

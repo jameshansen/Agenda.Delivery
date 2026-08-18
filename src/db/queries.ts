@@ -8,6 +8,10 @@ import {
   agentEvents,
   agentRuns,
   subscriptions,
+  users,
+  pushTargets,
+  customPrompts,
+  keywordFollows,
 } from "./schema";
 import { fmtDate } from "@/lib/format";
 
@@ -62,10 +66,12 @@ export type ModuleView = ModuleListItem & {
   lastChecked: string;
   highlights: { tag: string; text: string }[];
   keywords: {
+    id: string;
     keyword: string;
     followers: number;
     related: string[];
     summary: string;
+    followed: boolean;
   }[];
   meetings: { date: string; dateRaw: Date; title: string; kind: string; pages: number; pdfUrl: string | null; meetingUrl: string | null }[];
   /** Latest regular council meeting, if any (for the download card). */
@@ -245,6 +251,7 @@ export async function getModules(): Promise<ModuleListItem[]> {
 
 export async function getModuleBySlug(
   slug: string,
+  userId?: string,
 ): Promise<ModuleView | null> {
   const [m] = await db
     .select()
@@ -266,7 +273,7 @@ export async function getModuleBySlug(
     .orderBy(desc(agentRuns.createdAt))
     .limit(1);
 
-  const [hs, ks, mts, evs] = await Promise.all([
+  const [hs, ks, mts, evs, followedIds] = await Promise.all([
     db
       .select()
       .from(highlights)
@@ -293,7 +300,14 @@ export async function getModuleBySlug(
           .orderBy(desc(agentEvents.sort))
           .limit(10)
           .then((rows) => rows.reverse()),
+    userId
+      ? db
+          .select({ keywordId: keywordFollows.keywordId })
+          .from(keywordFollows)
+          .where(eq(keywordFollows.userId, userId))
+      : Promise.resolve([]),
   ]);
+  const followedSet = new Set(followedIds.map((f) => f.keywordId));
 
   return {
     id: m.id,
@@ -315,10 +329,12 @@ export async function getModuleBySlug(
     govType: m.govType,
     highlights: hs.map((h) => ({ tag: h.tag, text: h.text })),
     keywords: ks.map((k) => ({
+      id: k.id,
       keyword: k.keyword,
       followers: k.followers,
       related: k.related,
       summary: k.summary,
+      followed: followedSet.has(k.id),
     })),
     meetings: mts.map((t) => ({
       date: fmtDate(t.date),
@@ -407,4 +423,34 @@ export async function getSubscriptionsForUser(
     summary: r.summary ?? "",
     lastUpdated: fmtDate(r.lastUpdated),
   }));
+}
+
+/** Phase 6 account-page data: API key state, push targets, custom prompts, keyword follows. */
+export async function getAccountExtras(userId: string) {
+  const [[user], targets, prompts, follows] = await Promise.all([
+    db.select({ apiKeyPrefix: users.apiKeyPrefix }).from(users).where(eq(users.id, userId)),
+    db.select().from(pushTargets).where(eq(pushTargets.userId, userId)),
+    db.select().from(customPrompts).where(eq(customPrompts.userId, userId)).orderBy(asc(customPrompts.createdAt)),
+    db
+      .select({
+        id: keywordFollows.id,
+        keywordId: keywordFollows.keywordId,
+        pushUrl: keywordFollows.pushUrl,
+        keyword: keywords.keyword,
+        moduleSlug: modules.slug,
+        moduleName: modules.name,
+      })
+      .from(keywordFollows)
+      .innerJoin(keywords, eq(keywordFollows.keywordId, keywords.id))
+      .innerJoin(modules, eq(keywords.moduleId, modules.id))
+      .where(eq(keywordFollows.userId, userId)),
+  ]);
+
+  return {
+    apiKeyPrefix: user?.apiKeyPrefix ?? null,
+    discordUrl: targets.find((t) => t.kind === "discord")?.url ?? "",
+    webhookUrl: targets.find((t) => t.kind === "webhook")?.url ?? "",
+    customPrompts: prompts.map((p) => ({ id: p.id, promptText: p.promptText, pushUrl: p.pushUrl ?? "" })),
+    keywordFollows: follows.map((f) => ({ ...f, pushUrl: f.pushUrl ?? "" })),
+  };
 }

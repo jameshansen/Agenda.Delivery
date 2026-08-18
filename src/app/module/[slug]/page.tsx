@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import AgentLog from "@/components/AgentLog";
 import AgentLogStream from "@/components/AgentLogStream";
 import SubscribeCard from "@/components/SubscribeCard";
+import FollowKeywordButton from "@/components/FollowKeywordButton";
 import { getModuleBySlug, type Health } from "@/db/queries";
 import { auth } from "@/auth";
 
@@ -37,7 +38,8 @@ export default async function ModulePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [m, session] = await Promise.all([getModuleBySlug(slug), auth()]);
+  const session = await auth();
+  const m = await getModuleBySlug(slug, session?.user?.id);
   if (!m) notFound();
 
   const health = HEALTH[m.health];
@@ -143,8 +145,15 @@ export default async function ModulePage({
                       <span className="text-sm text-ink-soft">
                         {k.followers} people following
                       </span>
-                      <span className="ml-auto text-ink-soft transition-transform group-open:rotate-180">
-                        ⌄
+                      <span className="ml-auto flex items-center gap-3">
+                        <FollowKeywordButton
+                          keywordId={k.id}
+                          signedIn={!!session?.user}
+                          initiallyFollowed={k.followed}
+                        />
+                        <span className="text-ink-soft transition-transform group-open:rotate-180">
+                          ⌄
+                        </span>
                       </span>
                     </summary>
                     <p className="mt-3 text-sm leading-relaxed">{k.summary}</p>

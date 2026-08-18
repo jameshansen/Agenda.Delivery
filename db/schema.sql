@@ -40,6 +40,10 @@ DO $$ BEGIN
   );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+  CREATE TYPE push_target_kind AS ENUM ('discord', 'webhook');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- ---- Auth.js tables (adapter-managed; finalized during UI port) ----
 CREATE TABLE IF NOT EXISTS "user" (
   id             TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -48,8 +52,13 @@ CREATE TABLE IF NOT EXISTS "user" (
   email_verified TIMESTAMP,
   phone          TEXT UNIQUE,
   phone_verified TIMESTAMP,
-  image          TEXT
+  image          TEXT,
+  -- Phase 6: hashed API key for GET /api/me/updates.
+  api_key_hash   TEXT UNIQUE,
+  api_key_prefix TEXT
 );
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS api_key_hash TEXT UNIQUE;
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS api_key_prefix TEXT;
 
 CREATE TABLE IF NOT EXISTS account (
   user_id             TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
@@ -231,6 +240,34 @@ CREATE TABLE IF NOT EXISTS spider_candidate (
   created_at             TIMESTAMP NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS spider_candidate_status_idx ON spider_candidate (status);
+
+-- ---- Phase 6: push integrations & custom prompts --------------
+CREATE TABLE IF NOT EXISTS push_target (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id    TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  kind       push_target_kind NOT NULL,
+  url        TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS push_target_user_kind_uniq ON push_target (user_id, kind);
+
+-- Capped at 5 per account by the server action, not a DB constraint.
+CREATE TABLE IF NOT EXISTS custom_prompt (
+  id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  prompt_text TEXT NOT NULL,
+  push_url    TEXT,
+  created_at  TIMESTAMP NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS keyword_follow (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id    TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  keyword_id TEXT NOT NULL REFERENCES keyword(id) ON DELETE CASCADE,
+  push_url   TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS keyword_follow_user_keyword_uniq ON keyword_follow (user_id, keyword_id);
 
 -- ---- Orchestrator / admin config -----------------------------
 -- One row per agent. Prompts + params + schedule are editable in the

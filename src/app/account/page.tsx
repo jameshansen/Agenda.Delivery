@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { getSubscriptionsForUser } from "@/db/queries";
+import { getSubscriptionsForUser, getAccountExtras } from "@/db/queries";
 import { signOutAction } from "@/app/actions";
 import UnsubscribeButton from "@/components/UnsubscribeButton";
+import ApiKeyPanel from "@/components/ApiKeyPanel";
+import PushTargetsForm from "@/components/PushTargetsForm";
+import CustomPromptsPanel from "@/components/CustomPromptsPanel";
+import KeywordFollowsPanel from "@/components/KeywordFollowsPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +15,10 @@ export default async function AccountPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const subs = await getSubscriptionsForUser(session.user.id);
+  const [subs, extras] = await Promise.all([
+    getSubscriptionsForUser(session.user.id),
+    getAccountExtras(session.user.id),
+  ]);
   const firstName = session.user.name?.split(" ")[0];
 
   return (
@@ -99,6 +106,51 @@ export default async function AccountPage() {
               ))}
             </ul>
           )}
+        </section>
+      </div>
+
+      <div className="mt-10 grid gap-8 md:grid-cols-2">
+        <section>
+          <h2 className="text-xl">Push destinations</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            Sent for every module you&apos;re subscribed to when it posts a new agenda.
+          </p>
+          <div className="mt-3">
+            <PushTargetsForm discordUrl={extras.discordUrl} webhookUrl={extras.webhookUrl} />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xl">API access</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            Fetch your subscription updates programmatically with{" "}
+            <code className="text-xs">GET /api/me/updates</code>.
+          </p>
+          <div className="mt-3">
+            <ApiKeyPanel prefix={extras.apiKeyPrefix} />
+          </div>
+        </section>
+      </div>
+
+      <div className="mt-10 grid gap-8 md:grid-cols-2">
+        <section>
+          <h2 className="text-xl">Custom summary prompts</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            Run your own instructions against every new agenda from a module you follow.
+          </p>
+          <div className="mt-3">
+            <CustomPromptsPanel prompts={extras.customPrompts} />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xl">Keyword follows</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            Push destinations for keywords you follow from module pages.
+          </p>
+          <div className="mt-3">
+            <KeywordFollowsPanel follows={extras.keywordFollows} />
+          </div>
         </section>
       </div>
     </main>

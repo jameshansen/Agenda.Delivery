@@ -1,4 +1,5 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+.claude
 
 # dependencies
 /node_modules
@@ -44,10 +45,6 @@ __pycache__/
 # stray local logs
 dev-server*.log
 
-# sensitive local notes / credentials pasted into root
-pixabay_api_key.txt
-SMS Email API.txt
-Development Notes*.txt.$
 
 # typescript
 *.tsbuildinfo

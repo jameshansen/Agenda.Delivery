@@ -43,7 +43,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       options: {
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: IS_HTTPS,
       },
     },
     csrfToken: {
@@ -52,7 +52,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: IS_HTTPS,
       },
     },
   },

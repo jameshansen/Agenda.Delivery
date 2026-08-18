@@ -9,6 +9,11 @@ orchestrator (not in the agents).
 from concurrent.futures import ThreadPoolExecutor
 
 from agenda_shared import db
+from agenda_shared.notify import (
+    notify_subscribers,
+    run_custom_prompts_for_module,
+    run_keyword_pushes_for_module,
+)
 from core import dispatch_agent
 
 
@@ -21,12 +26,14 @@ def run_pipeline(slug: str, trigger: str = "manual") -> dict:
     """Full per-module pipeline. Returns a summary dict of what ran."""
     check = dispatch_agent("checking", slug=slug, trigger=trigger)
     agenda_text = (check.get("data") or {}).get("agenda_text", "")
+    is_new = (check.get("data") or {}).get("is_new", False)
 
     # Conditional: broken config -> repair, then re-check.
     if _module_health(slug) in ("broken", "repairing"):
         dispatch_agent("scraper_repair", slug=slug, trigger="repair")
         recheck = dispatch_agent("checking", slug=slug, trigger=trigger)
         agenda_text = (recheck.get("data") or {}).get("agenda_text", "") or agenda_text
+        is_new = (recheck.get("data") or {}).get("is_new", False) or is_new
 
     if len(agenda_text) < 50:
         return {"slug": slug, "summarized": False, "reason": "no agenda content"}
@@ -43,6 +50,20 @@ def run_pipeline(slug: str, trigger: str = "manual") -> dict:
                                           trigger=trigger, inputs=inputs),
         }
         results = {k: f.result() for k, f in futures.items()}
+
+    # Only dispatch notifications on an actual new meeting, not every
+    # routine check that finds nothing new.
+    if is_new:
+        mod = db.one("SELECT id, name, slug FROM module WHERE slug = %s", (slug,))
+        meeting = db.one(
+            "SELECT title FROM meeting WHERE module_id = %s ORDER BY date DESC LIMIT 1",
+            (mod["id"],),
+        ) if mod else None
+        if mod and meeting:
+            notify_subscribers(mod["id"], mod["name"], mod["slug"], meeting["title"])
+        if mod:
+            run_custom_prompts_for_module(mod["id"], agenda_text)
+            run_keyword_pushes_for_module(mod["id"], agenda_text)
 
     return {"slug": slug, "summarized": True,
             "ok": {k: v.get("ok") for k, v in results.items()}}
