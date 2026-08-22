@@ -2,6 +2,7 @@ import base64
 import io
 import os
 import re
+import signal
 import subprocess
 import time
 import threading
@@ -26,6 +27,61 @@ GLOBAL_LOCK = threading.Lock()
 
 CHROME_BIN = os.environ.get("CHROME_BIN")
 CHROMEDRIVER_PATH = os.environ.get("CHROMEDRIVER_PATH")
+
+# Hard bounds so a caller that fails to DELETE a session (e.g. its delete
+# request times out under load) can't pile up headful Chrome instances and
+# exhaust the host. The orchestrator drives the browser one job at a time, so
+# a low cap is safe; anything older than the TTL is a leak and gets reaped.
+MAX_SESSIONS = int(os.environ.get("MAX_BROWSER_SESSIONS", "2"))
+SESSION_TTL = int(os.environ.get("BROWSER_SESSION_TTL", "240"))  # seconds
+
+
+def _kill_driver(driver) -> None:
+    """Quit the driver and, as a backstop, SIGKILL the Chrome + chromedriver
+    processes -- undetected-chromedriver's quit() sometimes leaves the tree
+    alive, which is exactly how the host got buried under 70+ chrome procs."""
+    pids = []
+    try:
+        bp = getattr(driver, "browser_pid", None)
+        if bp:
+            pids.append(int(bp))
+    except Exception:
+        pass
+    try:
+        proc = getattr(getattr(driver, "service", None), "process", None)
+        if proc and proc.pid:
+            pids.append(int(proc.pid))
+    except Exception:
+        pass
+    try:
+        driver.quit()
+    except Exception:
+        pass
+    for pid in pids:
+        # Kill children first (renderer/gpu/zygote), then the process itself.
+        try:
+            subprocess.run(["pkill", "-9", "-P", str(pid)], timeout=5)
+        except Exception:
+            pass
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except Exception:
+            pass
+
+
+def _reaper_loop() -> None:
+    while True:
+        time.sleep(30)
+        now = time.time()
+        stale = []
+        with GLOBAL_LOCK:
+            for sid, e in list(SESSIONS.items()):
+                if now - e.get("created", now) > SESSION_TTL:
+                    SESSIONS.pop(sid, None)
+                    stale.append((sid, e))
+        for sid, e in stale:
+            _kill_driver(e["driver"])
+            print(f"[reaper] killed stale browser session {sid}", flush=True)
 
 
 def _chrome_major():
@@ -190,13 +246,25 @@ def health():
 
 @app.route("/session", methods=["POST"])
 def create_session():
+    # Evict the oldest sessions (killing outside the lock, since quit() can be
+    # slow) until we're under the cap, so we never exceed MAX_SESSIONS Chromes.
+    evict = []
+    with GLOBAL_LOCK:
+        while len(SESSIONS) >= MAX_SESSIONS:
+            old_sid, old = min(SESSIONS.items(), key=lambda kv: kv[1].get("created", 0))
+            SESSIONS.pop(old_sid, None)
+            evict.append((old_sid, old))
+    for old_sid, old in evict:
+        _kill_driver(old["driver"])
+        print(f"[cap] evicted oldest browser session {old_sid}", flush=True)
+
     with GLOBAL_LOCK:
         sid = str(uuid.uuid4())
         try:
             driver = _make_driver()
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
-        SESSIONS[sid] = {"driver": driver, "lock": threading.Lock(), "frame_map": {}}
+        SESSIONS[sid] = {"driver": driver, "lock": threading.Lock(), "frame_map": {}, "created": time.time()}
         return jsonify({"ok": True, "session_id": sid})
 
 
@@ -207,10 +275,7 @@ def delete_session(sid):
     if not entry:
         return jsonify({"ok": False, "error": "no such session"}), 404
     with entry["lock"]:
-        try:
-            entry["driver"].quit()
-        except Exception:
-            pass
+        _kill_driver(entry["driver"])
     return jsonify({"ok": True})
 
 
@@ -515,6 +580,9 @@ def links(sid):
             except Exception:
                 pass
 
+
+# Start the idle-session reaper once, under gunicorn or a direct run.
+threading.Thread(target=_reaper_loop, daemon=True, name="reaper").start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), threaded=True)
