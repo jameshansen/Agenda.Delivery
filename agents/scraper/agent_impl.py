@@ -158,7 +158,7 @@ class _ScraperBase(BaseAgent):
                 """INSERT INTO meeting (module_id, date, title, kind, pages, pdf_url, meeting_url)
                    VALUES (%s,%s,%s,'Council Meeting',%s,%s,%s)
                    ON CONFLICT (module_id, date, title) DO NOTHING""",
-                (mod["id"], _naive(mdate), title, len(d.get("pdfLinks") or []),
+                (mod["id"], _naive(mdate), title, d.get("pages") or 0,
                  (d.get("pdfLinks") or [None])[0], d.get("meetingUrl")))
             self.emit(f'{"Post-repair: found" if repair else "Found"} and recorded '
                       f'"{title}" ({len(d.get("pdfLinks") or [])} PDF links).',

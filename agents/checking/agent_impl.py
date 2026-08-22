@@ -74,7 +74,7 @@ class CheckingAgent(BaseAgent):
                    VALUES (%s,%s,%s,'Council Meeting',%s,%s,%s)
                    ON CONFLICT (module_id, date, title) DO NOTHING""",
                 (mod["id"], _naive(mdate) if mdate else _now(), d.get("meetingTitle"),
-                 len(d.get("pdfLinks") or []), (d.get("pdfLinks") or [None])[0],
+                 d.get("pages") or 0, (d.get("pdfLinks") or [None])[0],
                  d.get("meetingUrl")),
             )
             self.emit(f'New agenda detected: "{d.get("meetingTitle")}". '
