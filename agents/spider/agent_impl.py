@@ -29,6 +29,11 @@ class SpiderAgent(BaseAgent):
     agent_type = "spider"
 
     def run(self, job: dict) -> str:
+        # Active (non-growth) mode: find a working agenda page for an existing
+        # council that needs help, instead of discovering a new council.
+        if job.get("inputs", {}).get("mode") == "active" and job.get("slug"):
+            return self._run_active(job["slug"])
+
         sources = _load_sources()
         existing_names = {r["name"].lower() for r in db.query("SELECT name FROM module")}
         existing_urls = {r["url"].lower() for r in db.query("SELECT url FROM spider_candidate")}
@@ -94,3 +99,37 @@ class SpiderAgent(BaseAgent):
         self.output.update({"slug": slug, "module_id": newmod["id"],
                             "created": True, "candidate_url": nxt["url"]})
         return f"Created module for {nxt['name']} — handed to scraper"
+
+    def _run_active(self, slug: str) -> str:
+        """Find a better/working agenda page for an existing council. Updates
+        module.source_url so the scraper can (re)build a config against it.
+        Never creates a new module."""
+        mod = db.one("SELECT id, name, region, source_url FROM module WHERE slug = %s", (slug,))
+        if not mod:
+            return f"Module {slug} not found"
+
+        self.emit(
+            f"Active mode: searching for a working agenda page for {mod['name']} "
+            "(helping an existing council, not adding a new one).",
+            "web.search", f"current source: {mod['source_url']}")
+
+        query = f"{mod['name']} {mod.get('region') or ''} council meeting agendas".strip()
+        res = tools.web_search(query)
+        urls = (res.get("data") or {}).get("validUrls") or []
+        # Don't just re-pick the URL we already know is failing.
+        urls = [u for u in urls if u.rstrip("/") != (mod["source_url"] or "").rstrip("/")] or urls
+        if not urls:
+            self.emit("No working agenda page found this pass — will retry another council next run.",
+                      "web.search", res.get("detail", ""))
+            return f"No agenda page found for {mod['name']}"
+
+        best = urls[0]
+        db.execute("UPDATE module SET source_url = %s, health = 'repairing' WHERE id = %s",
+                   (best, mod["id"]))
+        self.emit(f'Found a candidate agenda page for {mod["name"]}: {best}. '
+                  "Handing to the Scraper to build a config.",
+                  "web.search", res.get("detail", ""))
+
+        self.output.update({"slug": slug, "module_id": mod["id"],
+                            "created": True, "candidate_url": best, "active": True})
+        return f"Updated source for {mod['name']} — handed to scraper"
