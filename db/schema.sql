@@ -285,3 +285,101 @@ CREATE TABLE IF NOT EXISTS agent_config (
   enabled        BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at     TIMESTAMP NOT NULL DEFAULT now()
 );
+
+-- ─────────────────────────────────────────────────────────────
+-- Accounts redesign: Subscriptions → Artifacts → Actions flowchart,
+-- plus mailing lists. Retires the push_target / custom_prompt /
+-- keyword_follow model (those tables are left in place but unused).
+-- Idempotent, safe to re-run against a live DB.
+-- ─────────────────────────────────────────────────────────────
+
+-- Per-agenda summary, preserved indefinitely (meeting rows are never
+-- deleted). The module page's per-meeting Summary button expands to this.
+ALTER TABLE meeting ADD COLUMN IF NOT EXISTS summary TEXT;
+
+-- Backfill: the newest meeting per module inherits the module's current summary.
+UPDATE meeting mt SET summary = m.summary
+  FROM module m
+ WHERE mt.module_id = m.id
+   AND m.summary IS NOT NULL
+   AND mt.summary IS NULL
+   AND mt.id = (SELECT id FROM meeting x WHERE x.module_id = m.id
+                ORDER BY x.date DESC LIMIT 1);
+
+-- Reusable delivery targets (scripts + Discord hooks), created and reused
+-- in the actions dialog.
+CREATE TABLE IF NOT EXISTS automation_target (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id    TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,              -- 'script' | 'discord'
+  name       TEXT NOT NULL,
+  url        TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- Reusable content transforms. kind 'custom_prompt' runs prompt_text against
+-- the agenda; 'keywords' filters/summarizes by keywords; 'summary' is the
+-- default AI summary.
+CREATE TABLE IF NOT EXISTS automation_artifact (
+  id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,             -- 'summary' | 'custom_prompt' | 'keywords'
+  name        TEXT NOT NULL,
+  prompt_text TEXT,
+  keywords    TEXT,
+  created_at  TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- Mailing lists: header/footer/emails + send policy.
+CREATE TABLE IF NOT EXISTS mailing_list (
+  id           TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  header       TEXT NOT NULL DEFAULT '',
+  footer       TEXT NOT NULL DEFAULT '',
+  emails       TEXT NOT NULL DEFAULT '',   -- newline/comma separated
+  send_policy  TEXT NOT NULL DEFAULT 'threshold',  -- 'threshold' | 'schedule'
+  threshold    INTEGER NOT NULL DEFAULT 5,
+  frequency    TEXT NOT NULL DEFAULT 'weekly',      -- 'daily' | 'weekly'
+  last_sent_at TIMESTAMP,
+  created_at   TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- Items queued for a mailing list, drained on threshold or schedule.
+CREATE TABLE IF NOT EXISTS mailing_queue (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  list_id    TEXT NOT NULL REFERENCES mailing_list(id) ON DELETE CASCADE,
+  subject    TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT now(),
+  sent_at    TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS mailing_queue_list_unsent_idx ON mailing_queue (list_id) WHERE sent_at IS NULL;
+
+-- The flowchart rule: subscription trigger → optional artifact transform → action.
+CREATE TABLE IF NOT EXISTS automation_rule (
+  id           TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  module_id    TEXT NOT NULL REFERENCES module(id) ON DELETE CASCADE,
+  trigger      TEXT NOT NULL DEFAULT 'new_agenda',   -- 'new_agenda' | 'new_summary'
+  artifact_id  TEXT REFERENCES automation_artifact(id) ON DELETE SET NULL,
+  content_mode TEXT NOT NULL DEFAULT 'summary',      -- 'summary' | 'link' | 'full_text' (when no artifact)
+  action_kind  TEXT NOT NULL,                         -- 'script' | 'discord' | 'mailing_list'
+  target_id    TEXT REFERENCES automation_target(id) ON DELETE CASCADE,
+  list_id      TEXT REFERENCES mailing_list(id) ON DELETE CASCADE,
+  created_at   TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS automation_rule_module_idx ON automation_rule (module_id);
+CREATE INDEX IF NOT EXISTS automation_rule_user_idx ON automation_rule (user_id);
+
+-- Output of a user's keyword artifact against a module's latest agenda.
+-- Drives the module page's "Keyword summaries" section, which now shows ONLY
+-- keyword presets that are actually referenced by an action on that module.
+CREATE TABLE IF NOT EXISTS module_keyword_output (
+  id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  module_id   TEXT NOT NULL REFERENCES module(id) ON DELETE CASCADE,
+  artifact_id TEXT NOT NULL REFERENCES automation_artifact(id) ON DELETE CASCADE,
+  summary     TEXT NOT NULL,
+  updated_at  TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS module_keyword_output_uniq ON module_keyword_output (module_id, artifact_id);

@@ -144,6 +144,8 @@ export const meetings = pgTable(
     pdfUrl: text("pdf_url"),
     /** URL of the meeting detail page where the agenda was found. */
     meetingUrl: text("meeting_url"),
+    /** Per-agenda AI summary, preserved indefinitely (the "artifact"). */
+    summary: text("summary"),
   },
   (t) => [
     index("meeting_module_date_idx").on(t.moduleId, t.date),
@@ -243,6 +245,86 @@ export const keywordFollows = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("keyword_follow_user_keyword_uniq").on(t.userId, t.keywordId)],
+);
+
+/* ---- Accounts redesign: Subscriptions → Artifacts → Actions flowchart ---- */
+
+/** Reusable delivery targets (scripts + Discord hooks), reused across rules. */
+export const automationTargets = pgTable("automation_target", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // "script" | "discord"
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/** Reusable content transforms: default summary, custom prompt, or keywords. */
+export const automationArtifacts = pgTable("automation_artifact", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // "summary" | "custom_prompt" | "keywords"
+  name: text("name").notNull(),
+  promptText: text("prompt_text"),
+  keywords: text("keywords"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/** Mailing lists: header/footer/emails + send policy. */
+export const mailingLists = pgTable("mailing_list", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  header: text("header").notNull().default(""),
+  footer: text("footer").notNull().default(""),
+  emails: text("emails").notNull().default(""),
+  sendPolicy: text("send_policy").notNull().default("threshold"), // "threshold" | "schedule"
+  threshold: integer("threshold").notNull().default(5),
+  frequency: text("frequency").notNull().default("weekly"), // "daily" | "weekly"
+  lastSentAt: timestamp("last_sent_at", { mode: "date" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/** Items queued for a mailing list, drained on threshold or schedule. */
+export const mailingQueue = pgTable("mailing_queue", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  listId: text("list_id").notNull().references(() => mailingLists.id, { onDelete: "cascade" }),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { mode: "date" }),
+});
+
+/** The flowchart rule: subscription trigger → optional artifact → action. */
+export const automationRules = pgTable(
+  "automation_rule",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    moduleId: text("module_id").notNull().references(() => modules.id, { onDelete: "cascade" }),
+    trigger: text("trigger").notNull().default("new_agenda"), // "new_agenda" | "new_summary"
+    artifactId: text("artifact_id").references(() => automationArtifacts.id, { onDelete: "set null" }),
+    contentMode: text("content_mode").notNull().default("summary"), // "summary" | "link" | "full_text"
+    actionKind: text("action_kind").notNull(), // "script" | "discord" | "mailing_list"
+    targetId: text("target_id").references(() => automationTargets.id, { onDelete: "cascade" }),
+    listId: text("list_id").references(() => mailingLists.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("automation_rule_module_idx").on(t.moduleId), index("automation_rule_user_idx").on(t.userId)],
+);
+
+/** Output of a keyword artifact against a module's latest agenda. Drives the
+ * module page's keyword section (shown only for presets used by an action). */
+export const moduleKeywordOutputs = pgTable(
+  "module_keyword_output",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    moduleId: text("module_id").notNull().references(() => modules.id, { onDelete: "cascade" }),
+    artifactId: text("artifact_id").notNull().references(() => automationArtifacts.id, { onDelete: "cascade" }),
+    summary: text("summary").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("module_keyword_output_uniq").on(t.moduleId, t.artifactId)],
 );
 
 /* ---- Phase 4: Agent system tables ---- */

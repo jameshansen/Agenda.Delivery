@@ -9,11 +9,7 @@ orchestrator (not in the agents).
 from concurrent.futures import ThreadPoolExecutor
 
 from agenda_shared import db
-from agenda_shared.notify import (
-    notify_subscribers,
-    run_custom_prompts_for_module,
-    run_keyword_pushes_for_module,
-)
+from agenda_shared.notify import run_automation_rules
 from core import dispatch_agent
 
 
@@ -54,16 +50,23 @@ def run_pipeline(slug: str, trigger: str = "manual") -> dict:
     # Only dispatch notifications on an actual new meeting, not every
     # routine check that finds nothing new.
     if is_new:
-        mod = db.one("SELECT id, name, slug FROM module WHERE slug = %s", (slug,))
+        mod = db.one("SELECT id, name, slug, summary FROM module WHERE slug = %s", (slug,))
         meeting = db.one(
             "SELECT title FROM meeting WHERE module_id = %s ORDER BY date DESC LIMIT 1",
             (mod["id"],),
         ) if mod else None
         if mod and meeting:
-            notify_subscribers(mod["id"], mod["name"], mod["slug"], meeting["title"])
-        if mod:
-            run_custom_prompts_for_module(mod["id"], agenda_text)
-            run_keyword_pushes_for_module(mod["id"], agenda_text)
+            # Email/Discord/script/mailing-list delivery is all rule-driven now
+            # (email is a "Send to my email" action, not an implicit subscription
+            # side effect), so there's no separate base-alert leg here.
+            run_automation_rules(mod["id"], {
+                "module_id": mod["id"],
+                "module_name": mod["name"],
+                "module_slug": mod["slug"],
+                "meeting_title": meeting["title"],
+                "agenda_text": agenda_text,
+                "summary": mod.get("summary") or "",
+            })
 
     return {"slug": slug, "summarized": True,
             "ok": {k: v.get("ok") for k, v in results.items()}}
@@ -93,6 +96,38 @@ def run_spider(trigger: str = "manual") -> dict:
     return {"created": True, "slug": slug, "scraped": True}
 
 
+def run_spider_active(trigger: str = "manual") -> dict:
+    """Non-growth mode: pick one existing council that needs help (broken, or
+    no agendas yet), have the spider find a working agenda page for it, then
+    hand it to the scraper + first pipeline. Adds NO new councils."""
+    mod = db.one(
+        """SELECT m.slug FROM module m
+           WHERE m.is_demo = FALSE
+             AND (m.health IN ('broken','repairing')
+                  OR NOT EXISTS (SELECT 1 FROM meeting mt WHERE mt.module_id = m.id))
+           ORDER BY m.last_checked ASC NULLS FIRST
+           LIMIT 1""")
+    if not mod:
+        return {"active": True, "created": False, "result": "no councils need help"}
+
+    slug = mod["slug"]
+    # Rotate this council to the back of the queue up front, so a failed find
+    # doesn't make us retry the same one forever -- the next tick picks another.
+    db.execute("UPDATE module SET last_checked = now() WHERE slug = %s", (slug,))
+    spider = dispatch_agent("spider", slug=slug, trigger=trigger,
+                            inputs={"mode": "active"})
+    if not spider.get("data", {}).get("created"):
+        return {"active": True, "slug": slug, "created": False,
+                "result": spider.get("result", "")}
+
+    scrape = dispatch_agent("scraper_create", slug=slug, trigger="spider")
+    if not scrape.get("ok"):
+        db.execute("UPDATE module SET health='broken' WHERE slug=%s", (slug,))
+        return {"active": True, "slug": slug, "scraped": False}
+    run_pipeline(slug, trigger="spider")
+    return {"active": True, "slug": slug, "scraped": True}
+
+
 def run_single(agent_type: str, slug: str | None, trigger: str, inputs: dict) -> dict:
     """Trigger one agent directly (used by the admin panel / manual triggers)."""
     return dispatch_agent(agent_type, slug=slug, trigger=trigger, inputs=inputs)
@@ -101,6 +136,7 @@ def run_single(agent_type: str, slug: str | None, trigger: str, inputs: dict) ->
 FLOWS = {
     "pipeline": lambda job: run_pipeline(job["slug"], job.get("trigger", "manual")),
     "spider": lambda job: run_spider(job.get("trigger", "manual")),
+    "spider_active": lambda job: run_spider_active(job.get("trigger", "manual")),
     "agent": lambda job: run_single(job["agent"], job.get("slug"),
                                     job.get("trigger", "manual"),
                                     job.get("inputs", {})),

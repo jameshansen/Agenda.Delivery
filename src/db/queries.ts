@@ -9,9 +9,12 @@ import {
   agentRuns,
   subscriptions,
   users,
-  pushTargets,
-  customPrompts,
-  keywordFollows,
+  automationTargets,
+  automationArtifacts,
+  automationRules,
+  mailingLists,
+  mailingQueue,
+  moduleKeywordOutputs,
 } from "./schema";
 import { fmtDate } from "@/lib/format";
 
@@ -71,9 +74,16 @@ export type ModuleView = ModuleListItem & {
     followers: number;
     related: string[];
     summary: string;
-    followed: boolean;
   }[];
-  meetings: { date: string; dateRaw: Date; title: string; kind: string; pages: number; pdfUrl: string | null; meetingUrl: string | null }[];
+  /** Keyword-artifact presets referenced by an action on this module, with
+   * their latest generated summary (null until the action first fires). */
+  keywordArtifacts: {
+    id: string;
+    name: string;
+    keywords: string;
+    summary: string | null;
+  }[];
+  meetings: { date: string; dateRaw: Date; title: string; kind: string; pages: number; pdfUrl: string | null; meetingUrl: string | null; summary: string | null }[];
   /** Latest regular council meeting, if any (for the download card). */
   latestCouncilMeeting: { title: string; date: string; kind: string; pages: number; pdfUrl: string | null; meetingUrl: string | null } | null;
   agentLog: {
@@ -251,7 +261,6 @@ export async function getModules(): Promise<ModuleListItem[]> {
 
 export async function getModuleBySlug(
   slug: string,
-  userId?: string,
 ): Promise<ModuleView | null> {
   const [m] = await db
     .select()
@@ -273,7 +282,7 @@ export async function getModuleBySlug(
     .orderBy(desc(agentRuns.createdAt))
     .limit(1);
 
-  const [hs, ks, mts, evs, followedIds] = await Promise.all([
+  const [hs, ks, mts, evs] = await Promise.all([
     db
       .select()
       .from(highlights)
@@ -300,14 +309,28 @@ export async function getModuleBySlug(
           .orderBy(desc(agentEvents.sort))
           .limit(10)
           .then((rows) => rows.reverse()),
-    userId
-      ? db
-          .select({ keywordId: keywordFollows.keywordId })
-          .from(keywordFollows)
-          .where(eq(keywordFollows.userId, userId))
-      : Promise.resolve([]),
   ]);
-  const followedSet = new Set(followedIds.map((f) => f.keywordId));
+
+  // Keyword-artifact presets referenced by any action on this module. The
+  // section only appears when at least one such action exists.
+  const kwRows = await db
+    .select({
+      id: automationArtifacts.id,
+      name: automationArtifacts.name,
+      keywords: automationArtifacts.keywords,
+      summary: moduleKeywordOutputs.summary,
+    })
+    .from(automationRules)
+    .innerJoin(automationArtifacts, eq(automationRules.artifactId, automationArtifacts.id))
+    .leftJoin(
+      moduleKeywordOutputs,
+      and(eq(moduleKeywordOutputs.artifactId, automationArtifacts.id), eq(moduleKeywordOutputs.moduleId, m.id)),
+    )
+    .where(and(eq(automationRules.moduleId, m.id), eq(automationArtifacts.kind, "keywords")));
+  const kwSeen = new Set<string>();
+  const keywordArtifacts = kwRows
+    .filter((k) => (kwSeen.has(k.id) ? false : (kwSeen.add(k.id), true)))
+    .map((k) => ({ id: k.id, name: k.name, keywords: k.keywords ?? "", summary: k.summary }));
 
   return {
     id: m.id,
@@ -334,8 +357,8 @@ export async function getModuleBySlug(
       followers: k.followers,
       related: k.related,
       summary: k.summary,
-      followed: followedSet.has(k.id),
     })),
+    keywordArtifacts,
     meetings: mts.map((t) => ({
       date: fmtDate(t.date),
       dateRaw: t.date,
@@ -344,6 +367,7 @@ export async function getModuleBySlug(
       pages: t.pages,
       pdfUrl: t.pdfUrl,
       meetingUrl: t.meetingUrl,
+      summary: t.summary,
     })),
     latestCouncilMeeting: (() => {
       // Find the most recent meeting that is a real council meeting,
@@ -425,32 +449,67 @@ export async function getSubscriptionsForUser(
   }));
 }
 
-/** Phase 6 account-page data: API key state, push targets, custom prompts, keyword follows. */
-export async function getAccountExtras(userId: string) {
-  const [[user], targets, prompts, follows] = await Promise.all([
+/** Account-page data for the Subscriptions → Artifacts → Actions flowchart + mailing lists. */
+export async function getAccountData(userId: string) {
+  const [[user], subs, targets, artifacts, rules, lists, queueCounts] = await Promise.all([
     db.select({ apiKeyPrefix: users.apiKeyPrefix }).from(users).where(eq(users.id, userId)),
-    db.select().from(pushTargets).where(eq(pushTargets.userId, userId)),
-    db.select().from(customPrompts).where(eq(customPrompts.userId, userId)).orderBy(asc(customPrompts.createdAt)),
     db
       .select({
-        id: keywordFollows.id,
-        keywordId: keywordFollows.keywordId,
-        pushUrl: keywordFollows.pushUrl,
-        keyword: keywords.keyword,
-        moduleSlug: modules.slug,
-        moduleName: modules.name,
+        moduleId: subscriptions.moduleId,
+        slug: modules.slug,
+        name: modules.name,
+        region: modules.region,
+        channel: subscriptions.channel,
       })
-      .from(keywordFollows)
-      .innerJoin(keywords, eq(keywordFollows.keywordId, keywords.id))
-      .innerJoin(modules, eq(keywords.moduleId, modules.id))
-      .where(eq(keywordFollows.userId, userId)),
+      .from(subscriptions)
+      .innerJoin(modules, eq(subscriptions.moduleId, modules.id))
+      .where(eq(subscriptions.userId, userId))
+      .orderBy(desc(subscriptions.createdAt)),
+    db.select().from(automationTargets).where(eq(automationTargets.userId, userId)).orderBy(asc(automationTargets.createdAt)),
+    db.select().from(automationArtifacts).where(eq(automationArtifacts.userId, userId)).orderBy(asc(automationArtifacts.createdAt)),
+    db.select().from(automationRules).where(eq(automationRules.userId, userId)).orderBy(desc(automationRules.createdAt)),
+    db.select().from(mailingLists).where(eq(mailingLists.userId, userId)).orderBy(asc(mailingLists.createdAt)),
+    db
+      .select({ listId: mailingQueue.listId, count: sql<number>`count(*)` })
+      .from(mailingQueue)
+      .where(sql`${mailingQueue.sentAt} IS NULL`)
+      .groupBy(mailingQueue.listId),
   ]);
+
+  // Dedupe subscriptions by module (a user may have both an email + text row).
+  const subByModule = new Map<string, (typeof subs)[number]>();
+  for (const s of subs) if (!subByModule.has(s.moduleId)) subByModule.set(s.moduleId, s);
+
+  const queued: Record<string, number> = {};
+  for (const q of queueCounts) queued[q.listId] = Number(q.count);
 
   return {
     apiKeyPrefix: user?.apiKeyPrefix ?? null,
-    discordUrl: targets.find((t) => t.kind === "discord")?.url ?? "",
-    webhookUrl: targets.find((t) => t.kind === "webhook")?.url ?? "",
-    customPrompts: prompts.map((p) => ({ id: p.id, promptText: p.promptText, pushUrl: p.pushUrl ?? "" })),
-    keywordFollows: follows.map((f) => ({ ...f, pushUrl: f.pushUrl ?? "" })),
+    subscriptions: [...subByModule.values()],
+    targets: targets.map((t) => ({ id: t.id, kind: t.kind, name: t.name, url: t.url })),
+    artifacts: artifacts.map((a) => ({ id: a.id, kind: a.kind, name: a.name, promptText: a.promptText, keywords: a.keywords })),
+    rules: rules.map((r) => ({
+      id: r.id,
+      moduleId: r.moduleId,
+      trigger: r.trigger,
+      artifactId: r.artifactId,
+      contentMode: r.contentMode,
+      actionKind: r.actionKind,
+      targetId: r.targetId,
+      listId: r.listId,
+    })),
+    mailingLists: lists.map((l) => ({
+      id: l.id,
+      name: l.name,
+      header: l.header,
+      footer: l.footer,
+      emails: l.emails,
+      sendPolicy: l.sendPolicy,
+      threshold: l.threshold,
+      frequency: l.frequency,
+      queued: queued[l.id] ?? 0,
+    })),
   };
 }
+
+export type AccountData = Awaited<ReturnType<typeof getAccountData>>;

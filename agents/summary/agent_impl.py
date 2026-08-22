@@ -115,6 +115,15 @@ class SummaryAgent(BaseAgent):
             "UPDATE module SET summary = %s, last_updated = now() WHERE id = %s",
             (summary_text, mod["id"]),
         )
+        # Also store the summary on the latest meeting row so each agenda keeps
+        # its own summary indefinitely (the "Artifacts" the account UI reuses,
+        # and what the module page's per-meeting Summary button expands to).
+        db.execute(
+            """UPDATE meeting SET summary = %s
+               WHERE id = (SELECT id FROM meeting WHERE module_id = %s
+                           ORDER BY date DESC LIMIT 1)""",
+            (summary_text, mod["id"]),
+        )
         self.emit("Wrote the general meeting summary.", "llm.summarize",
                   f"{len(summary_text)} chars written",
                   prompt=f"SYSTEM:\n{summary_system}\n\nUSER:\n{summary_user}", response=raw_summary,

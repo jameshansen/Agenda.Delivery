@@ -12,6 +12,7 @@ from flask import Flask, request, jsonify, Response
 
 from agenda_shared import db
 from agenda_shared.bus import redis_client
+from agenda_shared.notify import flush_mailing_lists
 from agenda_shared.settings import EVENTS_CHANNEL
 from core import is_paused, pause, RateLimited
 from flows import FLOWS
@@ -36,6 +37,17 @@ def _schedule_secs(agent_type: str, default: int) -> int | None:
     if not row["enabled"]:
         return None
     return row["schedule_secs"] if row["schedule_secs"] is not None else default
+
+
+def _spider_mode() -> str:
+    """'growth' (find new councils from sources.toml) or 'active' (find/fix
+    working agenda pages for councils we already have, no new councils).
+    Read from agent_config.params->>'mode'; defaults to 'growth'."""
+    try:
+        row = db.one("SELECT params->>'mode' AS mode FROM agent_config WHERE agent = 'spider'")
+        return (row or {}).get("mode") or "growth"
+    except Exception:
+        return "growth"
 
 
 # ── Background worker: pops jobs, runs flows, handles rate-limit pause ──
@@ -92,8 +104,14 @@ def _scheduler_loop() -> None:
                 last["checking"] = now
             ss = _schedule_secs("spider", SPIDER_SECS_DEFAULT)
             if ss and now - last.get("spider", 0) >= ss:
-                enqueue({"flow": "spider", "trigger": "scheduled update"})
+                flow = "spider_active" if _spider_mode() == "active" else "spider"
+                enqueue({"flow": flow, "trigger": "scheduled update"})
                 last["spider"] = now
+            # Mailing lists: cheap, self-gating (only sends when a list's
+            # threshold or schedule is actually due). Check once a minute.
+            if now - last.get("mailing", 0) >= 60:
+                flush_mailing_lists()
+                last["mailing"] = now
         except Exception as e:  # noqa: BLE001
             print(f"[scheduler] error: {e}", flush=True)
         time.sleep(5)

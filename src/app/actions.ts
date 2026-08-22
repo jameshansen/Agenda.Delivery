@@ -1,25 +1,24 @@
 "use server";
 
 import crypto from "crypto";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { auth, signIn, signOut } from "@/auth";
 import { db } from "@/db";
 import {
   modules,
   subscriptions,
   users,
-  pushTargets,
-  customPrompts,
-  keywords,
-  keywordFollows,
+  automationTargets,
+  automationArtifacts,
+  automationRules,
+  mailingLists,
 } from "@/db/schema";
 import { isValidContact } from "@/lib/contact";
 import { requestOtp, verifyOtp } from "@/lib/otp";
 import { createSession } from "@/lib/session";
 import { rateLimit } from "@/lib/rate-limit";
 import { SMS_ENABLED } from "@/lib/features";
-
-const MAX_CUSTOM_PROMPTS = 5;
+import { revalidatePath } from "next/cache";
 
 async function requireUserId(): Promise<string> {
   const session = await auth();
@@ -49,11 +48,24 @@ export async function subscribe(input: {
   if (input.channel === "text" && !SMS_ENABLED) throw new Error("SMS is not enabled");
 
   const session = await auth();
+  const userId = session?.user?.id ?? null;
+
+  // Idempotent for signed-in users: don't stack duplicate rows (which would
+  // double-email) when someone subscribes again or picks "Create an Action".
+  if (userId) {
+    const [existing] = await db
+      .select({ id: subscriptions.id })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.moduleId, m.id), eq(subscriptions.userId, userId), eq(subscriptions.channel, input.channel)))
+      .limit(1);
+    if (existing) return;
+  }
+
   await db.insert(subscriptions).values({
     moduleId: m.id,
     channel: input.channel,
     contact: input.contact,
-    userId: session?.user?.id ?? null,
+    userId,
   });
 }
 
@@ -132,6 +144,17 @@ export async function verifyOtpAction(input: {
     const [m] = await db.select({ id: modules.id }).from(modules).where(eq(modules.slug, moduleSlug)).limit(1);
     if (m) {
       await db.insert(subscriptions).values({ moduleId: m.id, channel, contact, userId });
+      // Email delivery is action-driven; give an email subscriber the matching
+      // "Send to my email" action so they actually receive summaries.
+      if (channel === "email") {
+        await db.insert(automationRules).values({
+          userId,
+          moduleId: m.id,
+          trigger: "new_agenda",
+          contentMode: "summary",
+          actionKind: "email",
+        });
+      }
     }
   }
 
@@ -160,7 +183,7 @@ export async function unsubscribe(input: { slug: string }) {
     );
 }
 
-/* ---- Phase 6: API key, push targets, custom prompts, keyword follows ---- */
+/* ---- API key ---- */
 
 /**
  * Generate a fresh API key, store only its sha256 hash + an 8-char prefix,
@@ -176,94 +199,160 @@ export async function generateApiKey(): Promise<{ key: string; prefix: string }>
   return { key, prefix };
 }
 
-export async function savePushTarget(input: { kind: "discord" | "webhook"; url: string }) {
+/* ---- Accounts redesign: targets, artifacts, rules, mailing lists ---- */
+
+function validUrl(u: string): boolean {
+  try { new URL(u); return true; } catch { return false; }
+}
+
+/** Reusable delivery target (script URL or Discord webhook). */
+export async function createTarget(input: { kind: "script" | "discord"; name: string; url: string }) {
   const userId = await requireUserId();
-  if (input.url) {
-    try {
-      new URL(input.url);
-    } catch {
-      return { ok: false, error: "That doesn't look like a valid URL." };
-    }
-  }
-  await db
-    .insert(pushTargets)
-    .values({ userId, kind: input.kind, url: input.url })
-    .onConflictDoUpdate({
-      target: [pushTargets.userId, pushTargets.kind],
-      set: { url: input.url },
-    });
+  if (!input.name.trim()) return { ok: false, error: "Name can't be empty." };
+  if (!validUrl(input.url)) return { ok: false, error: "That doesn't look like a valid URL." };
+  await db.insert(automationTargets).values({
+    userId, kind: input.kind, name: input.name.trim(), url: input.url.trim(),
+  });
+  revalidatePath("/account");
   return { ok: true };
 }
 
-export async function deletePushTarget(input: { kind: "discord" | "webhook" }) {
+export async function deleteTarget(input: { id: string }) {
   const userId = await requireUserId();
-  await db
-    .delete(pushTargets)
-    .where(and(eq(pushTargets.userId, userId), eq(pushTargets.kind, input.kind)));
+  await db.delete(automationTargets).where(and(eq(automationTargets.id, input.id), eq(automationTargets.userId, userId)));
+  revalidatePath("/account");
 }
 
-export async function addCustomPrompt(input: { promptText: string; pushUrl?: string }) {
+/** Reusable content transform (custom prompt or keywords). */
+export async function createArtifact(input: { kind: "custom_prompt" | "keywords"; name: string; promptText?: string; keywords?: string }) {
   const userId = await requireUserId();
-  if (!input.promptText.trim()) return { ok: false, error: "Prompt can't be empty." };
-  const [{ value: existing }] = await db
-    .select({ value: count() })
-    .from(customPrompts)
-    .where(eq(customPrompts.userId, userId));
-  if (existing >= MAX_CUSTOM_PROMPTS) {
-    return { ok: false, error: `You can have up to ${MAX_CUSTOM_PROMPTS} custom prompts.` };
+  if (!input.name.trim()) return { ok: false, error: "Name can't be empty." };
+  if (input.kind === "custom_prompt" && !input.promptText?.trim()) return { ok: false, error: "Prompt can't be empty." };
+  if (input.kind === "keywords" && !input.keywords?.trim()) return { ok: false, error: "Keywords can't be empty." };
+  await db.insert(automationArtifacts).values({
+    userId, kind: input.kind, name: input.name.trim(),
+    promptText: input.promptText?.trim() || null,
+    keywords: input.keywords?.trim() || null,
+  });
+  revalidatePath("/account");
+  return { ok: true };
+}
+
+export async function deleteArtifact(input: { id: string }) {
+  const userId = await requireUserId();
+  await db.delete(automationArtifacts).where(and(eq(automationArtifacts.id, input.id), eq(automationArtifacts.userId, userId)));
+  revalidatePath("/account");
+}
+
+/** A flowchart rule: subscription trigger → optional artifact → action. */
+export async function createRule(input: {
+  moduleId: string;
+  trigger: "new_agenda" | "new_summary";
+  artifactId?: string | null;
+  contentMode: "summary" | "link" | "full_text";
+  actionKind: "email" | "script" | "discord" | "mailing_list";
+  targetId?: string | null;
+  listId?: string | null;
+}) {
+  const userId = await requireUserId();
+  if (input.actionKind === "mailing_list" && !input.listId) return { ok: false, error: "Pick a mailing list." };
+  if ((input.actionKind === "script" || input.actionKind === "discord") && !input.targetId) {
+    return { ok: false, error: "Pick a target." };
   }
-  const [created] = await db
-    .insert(customPrompts)
-    .values({
+  await db.insert(automationRules).values({
+    userId,
+    moduleId: input.moduleId,
+    trigger: input.trigger,
+    artifactId: input.artifactId || null,
+    contentMode: input.contentMode,
+    actionKind: input.actionKind,
+    targetId: input.actionKind === "script" || input.actionKind === "discord" ? input.targetId || null : null,
+    listId: input.actionKind === "mailing_list" ? input.listId || null : null,
+  });
+  revalidatePath("/account");
+  return { ok: true };
+}
+
+/**
+ * Convenience for the module page's "Send the summary to my email": ensure the
+ * module is followed (so it shows in Subscriptions) and create a default
+ * "email the AI summary on a new agenda" action, unless one already exists.
+ */
+export async function subscribeAndEmail(input: { slug: string }) {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, error: "Not signed in" };
+  const userId = session.user.id;
+  const email = session.user.email;
+  if (!email) return { ok: false, error: "Your account has no email address." };
+
+  const [m] = await db.select({ id: modules.id }).from(modules).where(eq(modules.slug, input.slug)).limit(1);
+  if (!m) return { ok: false, error: "Unknown module" };
+
+  await subscribe({ slug: input.slug, channel: "email", contact: email });
+
+  const [existingRule] = await db
+    .select({ id: automationRules.id })
+    .from(automationRules)
+    .where(
+      and(
+        eq(automationRules.userId, userId),
+        eq(automationRules.moduleId, m.id),
+        eq(automationRules.actionKind, "email"),
+        eq(automationRules.trigger, "new_agenda"),
+      ),
+    )
+    .limit(1);
+  if (!existingRule) {
+    await db.insert(automationRules).values({
       userId,
-      promptText: input.promptText.trim(),
-      pushUrl: input.pushUrl?.trim() || null,
-    })
-    .returning({ id: customPrompts.id });
-  return { ok: true, id: created.id };
-}
-
-export async function deleteCustomPrompt(input: { id: string }) {
-  const userId = await requireUserId();
-  await db.delete(customPrompts).where(and(eq(customPrompts.id, input.id), eq(customPrompts.userId, userId)));
-}
-
-/** Follow a module's keyword (push URL is set later from the account page; starts null). */
-export async function followKeyword(input: { keywordId: string }) {
-  const userId = await requireUserId();
-  await db
-    .insert(keywordFollows)
-    .values({ userId, keywordId: input.keywordId })
-    .onConflictDoNothing();
-  await db
-    .update(keywords)
-    .set({ followers: (await db.select({ value: count() }).from(keywordFollows).where(eq(keywordFollows.keywordId, input.keywordId)))[0].value })
-    .where(eq(keywords.id, input.keywordId));
-}
-
-export async function unfollowKeyword(input: { keywordId: string }) {
-  const userId = await requireUserId();
-  await db
-    .delete(keywordFollows)
-    .where(and(eq(keywordFollows.userId, userId), eq(keywordFollows.keywordId, input.keywordId)));
-  await db
-    .update(keywords)
-    .set({ followers: (await db.select({ value: count() }).from(keywordFollows).where(eq(keywordFollows.keywordId, input.keywordId)))[0].value })
-    .where(eq(keywords.id, input.keywordId));
-}
-
-export async function updateKeywordFollowPushUrl(input: { keywordId: string; pushUrl: string }) {
-  const userId = await requireUserId();
-  if (input.pushUrl) {
-    try {
-      new URL(input.pushUrl);
-    } catch {
-      return { ok: false, error: "That doesn't look like a valid URL." };
-    }
+      moduleId: m.id,
+      trigger: "new_agenda",
+      contentMode: "summary",
+      actionKind: "email",
+    });
   }
-  await db
-    .update(keywordFollows)
-    .set({ pushUrl: input.pushUrl.trim() || null })
-    .where(and(eq(keywordFollows.userId, userId), eq(keywordFollows.keywordId, input.keywordId)));
+  revalidatePath("/account");
   return { ok: true };
+}
+
+export async function deleteRule(input: { id: string }) {
+  const userId = await requireUserId();
+  await db.delete(automationRules).where(and(eq(automationRules.id, input.id), eq(automationRules.userId, userId)));
+  revalidatePath("/account");
+}
+
+export async function saveMailingList(input: {
+  id?: string;
+  name: string;
+  header: string;
+  footer: string;
+  emails: string;
+  sendPolicy: "threshold" | "schedule";
+  threshold: number;
+  frequency: "daily" | "weekly";
+}) {
+  const userId = await requireUserId();
+  if (!input.name.trim()) return { ok: false, error: "Name can't be empty." };
+  const values = {
+    name: input.name.trim(),
+    header: input.header,
+    footer: input.footer,
+    emails: input.emails,
+    sendPolicy: input.sendPolicy,
+    threshold: Math.max(1, input.threshold || 5),
+    frequency: input.frequency,
+  };
+  if (input.id) {
+    await db.update(mailingLists).set(values).where(and(eq(mailingLists.id, input.id), eq(mailingLists.userId, userId)));
+  } else {
+    await db.insert(mailingLists).values({ userId, ...values });
+  }
+  revalidatePath("/account");
+  return { ok: true };
+}
+
+export async function deleteMailingList(input: { id: string }) {
+  const userId = await requireUserId();
+  await db.delete(mailingLists).where(and(eq(mailingLists.id, input.id), eq(mailingLists.userId, userId)));
+  revalidatePath("/account");
 }
