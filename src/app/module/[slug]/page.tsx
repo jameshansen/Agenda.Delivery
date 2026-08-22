@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import AgentLogStream from "@/components/AgentLogStream";
 import SubscribeCard from "@/components/SubscribeCard";
-import FollowKeywordButton from "@/components/FollowKeywordButton";
+import MeetingsList from "@/components/MeetingsList";
 import { getModuleBySlug, type Health } from "@/db/queries";
 import { auth } from "@/auth";
 
@@ -38,7 +38,7 @@ export default async function ModulePage({
 }) {
   const { slug } = await params;
   const session = await auth();
-  const m = await getModuleBySlug(slug, session?.user?.id);
+  const m = await getModuleBySlug(slug);
   if (!m) notFound();
 
   const health = HEALTH[m.health];
@@ -63,11 +63,17 @@ export default async function ModulePage({
         </div>
 
         <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-ink-soft">
-          <span>Last updated {m.lastUpdated}</span>
-          <span>Next agenda expected {m.nextExpected}</span>
-          {m.lastChecked && m.lastChecked !== "—" && (
-            <span>Last checked {m.lastChecked}</span>
-          )}
+          {(() => {
+            const upd = m.lastUpdated && m.lastUpdated !== "—" ? m.lastUpdated : null;
+            const chk = m.lastChecked && m.lastChecked !== "—" ? m.lastChecked : null;
+            if (upd && chk && upd === chk) return <span>Checked and updated on {upd}</span>;
+            return (
+              <>
+                {upd && <span>Last updated {upd}</span>}
+                {chk && <span>Last checked {chk}</span>}
+              </>
+            );
+          })()}
           <span>{m.followers} followers</span>
           <a
             href={m.sourceUrl}
@@ -95,7 +101,8 @@ export default async function ModulePage({
                 {m.latestCouncilMeeting.pdfUrl ? "Download the latest meeting agenda" : "View the latest meeting agenda"}
               </span>
               <span className="block truncate text-sm text-ink-soft">
-                {m.latestCouncilMeeting.title} · {m.latestCouncilMeeting.date} · {m.latestCouncilMeeting.pages} pages
+                {m.latestCouncilMeeting.title} · {m.latestCouncilMeeting.date}
+                {m.latestCouncilMeeting.pages > 0 && ` · ${m.latestCouncilMeeting.pages} page${m.latestCouncilMeeting.pages === 1 ? "" : "s"}`}
               </span>
             </span>
             <span className="ml-auto shrink-0 text-rust">
@@ -124,53 +131,41 @@ export default async function ModulePage({
               </div>
             </section>
 
-            {/* Keyword summaries */}
-            <section>
-              <h2 className="text-xl">Keyword summaries</h2>
-              <p className="mt-1 text-sm text-ink-soft">
-                Bespoke summaries for the topics people follow (up to 5).
-              </p>
-              <div className="mt-3 space-y-3">
-                {m.keywords.map((k) => (
-                  <details
-                    key={k.keyword}
-                    open
-                    className="group rounded-xl border border-black/10 bg-white/50 p-4"
-                  >
-                    <summary className="flex cursor-pointer items-center gap-3 list-none">
-                      <span className="rounded bg-rust/10 px-2 py-0.5 text-rust">
-                        {k.keyword}
-                      </span>
-                      <span className="text-sm text-ink-soft">
-                        {k.followers} people following
-                      </span>
-                      <span className="ml-auto flex items-center gap-3">
-                        <FollowKeywordButton
-                          keywordId={k.id}
-                          signedIn={!!session?.user}
-                          initiallyFollowed={k.followed}
-                        />
-                        <span className="text-ink-soft transition-transform group-open:rotate-180">
+            {/* Keyword summaries — only for keyword presets used by an action on this module */}
+            {m.keywordArtifacts.length > 0 && (
+              <section>
+                <h2 className="text-xl">Keyword summaries</h2>
+                <p className="mt-1 text-sm text-ink-soft">
+                  Bespoke summaries generated for keyword presets that subscribers track here.
+                </p>
+                <div className="mt-3 space-y-3">
+                  {m.keywordArtifacts.map((k) => (
+                    <details
+                      key={k.id}
+                      open
+                      className="group rounded-xl border border-black/10 bg-white/50 p-4"
+                    >
+                      <summary className="flex cursor-pointer items-center gap-3 list-none">
+                        <span className="rounded bg-rust/10 px-2 py-0.5 text-rust">
+                          {k.name}
+                        </span>
+                        <span className="flex flex-wrap gap-1 text-xs text-ink-soft">
+                          {k.keywords.split(",").map((kw) => kw.trim()).filter(Boolean).map((kw) => (
+                            <span key={kw} className="rounded-full bg-ink/5 px-2 py-0.5">{kw}</span>
+                          ))}
+                        </span>
+                        <span className="ml-auto text-ink-soft transition-transform group-open:rotate-180">
                           ⌄
                         </span>
-                      </span>
-                    </summary>
-                    <p className="mt-3 text-sm leading-relaxed">{k.summary}</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-soft">
-                      followers also track:
-                      {k.related.map((r) => (
-                        <span
-                          key={r}
-                          className="rounded-full bg-ink/5 px-2 py-0.5"
-                        >
-                          {r}
-                        </span>
-                      ))}
-                    </div>
-                  </details>
-                ))}
-              </div>
-            </section>
+                      </summary>
+                      <p className="mt-3 text-sm leading-relaxed">
+                        {k.summary ?? "No summary yet — it will appear after this source posts its next agenda."}
+                      </p>
+                    </details>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {/* Subscribe */}
             <section id="subscribe" className="scroll-mt-20">
@@ -196,52 +191,7 @@ export default async function ModulePage({
                   </p>
                 </div>
               ) : (
-                <ul className="mt-3 divide-y divide-black/5 rounded-xl border border-black/10 bg-white/40">
-                  {m.meetings.map((mt, i) => (
-                    <li
-                      key={i}
-                      className="flex items-center justify-between gap-4 px-4 py-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{mt.title}</span>
-                          <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs text-ink-soft">
-                            {mt.kind}
-                          </span>
-                        </div>
-                        <div className="text-sm text-ink-soft">
-                          {mt.date} · {mt.pages} pages
-                        </div>
-                      </div>
-                      <div className="flex gap-4 text-sm">
-                        {mt.pdfUrl ? (
-                          <a
-                            href={mt.pdfUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="hover:text-green"
-                          >
-                            PDF
-                          </a>
-                        ) : mt.meetingUrl ? (
-                          <a
-                            href={mt.meetingUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="hover:text-green"
-                          >
-                            View
-                          </a>
-                        ) : (
-                          <span className="text-ink-soft/50">no link</span>
-                        )}
-                        <a href="#summary" className="hover:text-green">
-                          Summary
-                        </a>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <MeetingsList meetings={m.meetings} />
               )}
             </section>
           </div>
