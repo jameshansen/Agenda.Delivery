@@ -29,6 +29,13 @@ type ScheduleEntry = {
   enabled: boolean;
 };
 
+/** Local clock time for an event bubble. Uses the real DB timestamp when
+ * present (replayed/paginated events), else the client arrival time. */
+function eventTime(e: { createdAt?: string; ts: number }): string {
+  const d = e.createdAt ? new Date(e.createdAt) : new Date(e.ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 /** Human-friendly cadence label from a seconds interval. */
 function cadence(secs: number | null): string {
   if (secs == null) return "on trigger";
@@ -187,6 +194,8 @@ function EventRow({ event }: { event: LiveEvent }) {
               )}
             </div>
           )}
+
+          <div className="mt-1 text-right text-[10px] text-ink-soft/60">{eventTime(event)}</div>
         </div>
       </div>
     </div>
@@ -479,6 +488,7 @@ export default function AgentsPage() {
                               className="mt-1 w-full rounded border border-black/10"
                             />
                           )}
+                          <div className="mt-1 text-right text-[9px] text-ink-soft/60">{eventTime(e)}</div>
                         </div>
                       );
                     })
