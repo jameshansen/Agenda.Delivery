@@ -1,6 +1,8 @@
 import base64
 import io
 import os
+import re
+import subprocess
 import time
 import threading
 import uuid
@@ -26,6 +28,21 @@ CHROME_BIN = os.environ.get("CHROME_BIN")
 CHROMEDRIVER_PATH = os.environ.get("CHROMEDRIVER_PATH")
 
 
+def _chrome_major():
+    """Installed Chrome's major version (e.g. 151). undetected-chromedriver
+    otherwise auto-downloads the *latest* chromedriver, which breaks with
+    'This version of ChromeDriver only supports Chrome version 152 / current
+    browser version is 151' whenever the pinned Chrome deb lags the newest
+    driver release. Passing version_main forces a matching driver."""
+    try:
+        out = subprocess.run([CHROME_BIN or "google-chrome", "--version"],
+                             capture_output=True, text=True, timeout=10).stdout
+        m = re.search(r"\b(\d+)\.\d", out)
+        return int(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
 def _make_driver():
     # Headful (not headless/--headless=new) under the entrypoint's Xvfb
     # display: real rendering pipeline is a stronger anti-detection signal
@@ -40,6 +57,11 @@ def _make_driver():
     kwargs = {"options": options}
     if CHROMEDRIVER_PATH:
         kwargs["driver_executable_path"] = CHROMEDRIVER_PATH
+    major = _chrome_major()
+    if major:
+        # Pin the driver to the installed Chrome so a newer driver release
+        # can't create the version-mismatch that kills every browser session.
+        kwargs["version_main"] = major
     driver = uc.Chrome(**kwargs)
     driver.set_page_load_timeout(60)
     return driver
