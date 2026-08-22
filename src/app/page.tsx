@@ -168,20 +168,20 @@ export default async function Home({
         <div className="mt-8 grid gap-8 sm:grid-cols-3">
           {[
             {
-              img: "/images/civic-1.jpg",
-              alt: "A town hall building facade",
+              img: "/images/group-individual.jpg",
+              alt: "A person catching up on updates at their laptop",
               title: "Individuals",
               body: "Keep an eye on your own neighbourhood, council, or school board. Get a summary the moment a new agenda drops, so a rezoning or budget vote never slips past you.",
             },
             {
-              img: "/images/civic-2.jpg",
-              alt: "A historic council building",
+              img: "/images/group-community.jpg",
+              alt: "A community group meeting around a table",
               title: "Community groups",
               body: "Watch every council and organization that touches your work, then fan the highlights out to your members through a Discord channel or a curated mailing list.",
             },
             {
-              img: "/images/civic-3.jpg",
-              alt: "A modern city hall building",
+              img: "/images/group-advocate.jpg",
+              alt: "A microphone at a press conference podium",
               title: "Advocates & journalists",
               body: "Follow specific keywords across many jurisdictions at once, run your own prompts against each agenda, and pull everything through the API into your existing tools.",
             },
