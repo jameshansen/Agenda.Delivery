@@ -4,7 +4,19 @@
 
 Never miss an update from your local **council, committee, organization, non-profit, charity, or business.**
 
-An open-source, AI-enabled service that monitors public agendas around the world, summarizes them, and delivers the parts you care about by email, text, or RSS. Agenda "Modules" are self-healing AI scrapers: they discover new councils, build their own scraping logic, detect when a site breaks, and repair themselves, with every step visible in the UI.
+agenda.delivery is an open-source, AI-enabled service that watches public meeting agendas, summarizes them in plain language, and routes what matters to wherever you work. A network of self-healing AI agents discovers sources, builds its own scraping logic, notices when a site changes, and repairs itself, with every step visible in the UI.
+
+## What you can do
+
+- **Follow any agenda** by council, committee, or community organization, and browse by region or by your location.
+- **Read plain-language summaries** with key highlights and topic tags, generated for every new agenda and preserved indefinitely.
+- **Build actions**, a flowchart of Subscriptions, Artifacts, and Actions. When a source you follow publishes a new agenda, optionally shape it with an artifact (the AI summary, a custom prompt, or your own keywords) and deliver it to your email, a Discord channel, a script endpoint, or a mailing list. Script and Discord targets are reusable across actions.
+- **Run mailing lists** with your own header and footer, sent on a schedule or once the queue reaches a threshold, so a community group can keep its members informed automatically.
+- **Track keywords** across every source you follow, and pull everything through a developer API.
+
+## Origins
+
+agenda.delivery grew out of community work. It started with the [Langley Urbanist Society's council summaries](https://langleyurbanistsociety.ca/council-summaries), where I summarized Township of Langley and City of Langley council meetings for the group to keep members informed and to flag upcoming issues and opportunities to speak. This system expands that idea and opens the same ability to everyone, from individuals keeping an eye on their own community to other community groups staying aware of the decisions that affect their work.
 
 ## Stack
 
