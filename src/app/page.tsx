@@ -81,10 +81,20 @@ export default async function Home({
     <main className="flex-1 w-full">
       {/* Hero */}
       <section className="px-6 pt-16 pb-12 text-center sm:pt-24">
-        <h1 className="text-[10vw] leading-none tracking-tight sm:text-6xl lg:text-7xl">
-          <span className="text-green-dark">agenda</span>
-          <span className="text-green">.delivery</span>
-        </h1>
+        {/* inline-block wrapper shrink-wraps to the wordmark width, so the icon
+            can be sized as a fraction of the hero text at every breakpoint */}
+        <div className="mx-auto inline-block">
+          {/* eslint-disable-next-line @next/next/no-img-element -- small local logo, % width tracks the wordmark */}
+          <img
+            src="/images/icon.png"
+            alt="agenda.delivery logo"
+            className="mx-auto mb-4 block h-auto w-[65%]"
+          />
+          <h1 className="text-[10vw] leading-none tracking-tight sm:text-6xl lg:text-7xl">
+            <span className="text-green-dark">agenda</span>
+            <span className="text-green">.delivery</span>
+          </h1>
+        </div>
         <p className="mx-auto mt-5 max-w-2xl text-xl text-ink sm:text-2xl">
           never miss an update from your local <RotatingWord />
         </p>
