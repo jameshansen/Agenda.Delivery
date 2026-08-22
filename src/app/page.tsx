@@ -81,12 +81,16 @@ export default async function Home({
     <main className="flex-1 w-full">
       {/* Hero */}
       <section className="px-6 pt-16 pb-12 text-center sm:pt-24">
-        <h1 className="text-6xl tracking-tight sm:text-7xl">
+        <h1 className="text-[10vw] leading-none tracking-tight sm:text-6xl lg:text-7xl">
           <span className="text-green-dark">agenda</span>
           <span className="text-green">.delivery</span>
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-xl text-ink sm:text-2xl">
           never miss an update from your local <RotatingWord />
+        </p>
+        <p className="mx-auto mt-3 max-w-xl text-base text-ink-soft">
+          Track council and community agendas, get plain-language summaries, and
+          route what matters to Discord, a script, or your own mailing list.
         </p>
 
         {/* Search */}
@@ -144,27 +148,32 @@ export default async function Home({
         </div>
       </section>
 
-      {/* About / how it works */}
-      <section className="mx-auto max-w-5xl px-6 pb-20">
-        <div className="grid gap-8 sm:grid-cols-3">
+      {/* Who it's for */}
+      <section className="mx-auto max-w-5xl px-6 pb-16">
+        <h2 className="text-center text-2xl sm:text-3xl">Built for anyone who needs to stay in the loop</h2>
+        <p className="mx-auto mt-3 max-w-2xl text-center text-ink-soft">
+          The meetings that shape your street, your sector, and your city are public, but scattered
+          across dozens of sites. agenda.delivery watches them for you.
+        </p>
+        <div className="mt-8 grid gap-8 sm:grid-cols-3">
           {[
             {
               img: "/images/civic-1.jpg",
               alt: "A town hall building facade",
-              title: "AI agents watch every agenda page",
-              body: "A network of autonomous agents crawls council, board, and organization sites around the clock, looking for newly posted meeting agendas.",
+              title: "Individuals",
+              body: "Keep an eye on your own neighbourhood, council, or school board. Get a summary the moment a new agenda drops, so a rezoning or budget vote never slips past you.",
             },
             {
               img: "/images/civic-2.jpg",
               alt: "A historic council building",
-              title: "Summarized, categorized, searchable",
-              body: "Every agenda gets a plain-language summary, key highlights, and topic tags automatically, so you can skim what matters in seconds.",
+              title: "Community groups",
+              body: "Watch every council and organization that touches your work, then fan the highlights out to your members through a Discord channel or a curated mailing list.",
             },
             {
               img: "/images/civic-3.jpg",
               alt: "A modern city hall building",
-              title: "Self-healing when sites change",
-              body: "When a council redesigns its site or moves its meeting portal, the same agents notice, adapt, and keep tracking without manual fixes.",
+              title: "Advocates & journalists",
+              body: "Follow specific keywords across many jurisdictions at once, run your own prompts against each agenda, and pull everything through the API into your existing tools.",
             },
           ].map((f) => (
             <div key={f.title} className="overflow-hidden rounded-2xl border border-black/8 bg-row/40">
@@ -183,6 +192,38 @@ export default async function Home({
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* What you get */}
+      <section className="mx-auto max-w-5xl px-6 pb-20">
+        <h2 className="text-center text-2xl sm:text-3xl">Everything the agents do for you</h2>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { icon: "fa-robot", color: "text-emerald-600", title: "Agents watch every page", body: "Autonomous agents crawl council, board, and organization sites around the clock for newly posted agendas." },
+            { icon: "fa-comment-dots", color: "text-violet-600", title: "Plain-language summaries", body: "Every agenda is summarized with key highlights and topic tags, so you skim what matters in seconds." },
+            { icon: "fa-diagram-project", color: "text-sky-600", title: "Automated actions", body: "Build simple rules: when a subscription updates, deliver the summary, a link, or the full text wherever you want." },
+            { icon: "fa-discord", color: "text-indigo-500", brand: true, title: "Discord & webhooks", body: "Push updates straight into a Discord channel or your own script endpoint, reusable across all your rules." },
+            { icon: "fa-envelope", color: "text-rose-500", title: "Mailing lists", body: "Collect updates into a digest with your own header and footer, sent on a schedule or when the queue fills up." },
+            { icon: "fa-wand-magic-sparkles", color: "text-amber-600", title: "Custom prompts & keywords", body: "Run your own instructions against each agenda, or track specific keywords across every council you follow." },
+            { icon: "fa-code", color: "text-slate-600", title: "Developer API", body: "Fetch your subscription updates programmatically and wire agenda.delivery into whatever you already use." },
+            { icon: "fa-heart-pulse", color: "text-emerald-600", title: "Self-healing", body: "When a council redesigns its site or moves its portal, the agents notice, adapt, and keep tracking, no manual fixes." },
+            { icon: "fa-location-dot", color: "text-teal-600", title: "Find agendas near you", body: "Browse by region or by your location, across councils and community organizations alike." },
+          ].map((f) => (
+            <div key={f.title} className="rounded-2xl border border-black/8 bg-white/50 p-5">
+              <i className={`${f.brand ? "fa-brands" : "fa-solid"} ${f.icon} ${f.color} text-xl`} />
+              <h3 className="mt-3 font-semibold text-ink">{f.title}</h3>
+              <p className="mt-1.5 text-sm text-ink-soft">{f.body}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-8 text-center">
+          <Link
+            href="/login"
+            className="inline-block rounded-full bg-green px-6 py-3 text-paper transition-opacity hover:opacity-90"
+          >
+            Create a free account
+          </Link>
         </div>
       </section>
 

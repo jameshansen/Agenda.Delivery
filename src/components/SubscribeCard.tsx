@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { subscribe } from "@/app/actions";
+import { subscribe, subscribeAndEmail } from "@/app/actions";
 import { EMAIL_RE, PHONE_RE } from "@/lib/contact";
 import { SMS_ENABLED } from "@/lib/features";
 
@@ -30,19 +31,40 @@ export default function SubscribeCard({
   const [done, setDone] = useState<"email" | "text" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [choosing, setChoosing] = useState(false);
 
-  async function handleAccount(channel: "email" | "text") {
-    const contact = channel === "email" ? accountEmail : accountPhone;
-    if (!contact) return;
+  // "Send the summary to my email" — creates the follow + a "Send to my email"
+  // action, so email delivery lives in the same action system as the rest.
+  async function handleEmailAction() {
     setPending(true);
     setError(null);
     try {
-      await subscribe({ slug: moduleSlug, channel, contact });
-      setDone(channel);
+      const res = await subscribeAndEmail({ slug: moduleSlug });
+      if (res.ok) setDone("email");
+      else setError(res.error ?? "Couldn't set that up just now. Try again.");
     } catch (err) {
-      console.error("[SubscribeCard] subscribe failed:", err);
-      setError("Couldn't subscribe just now. Try again.");
+      console.error("[SubscribeCard] email action failed:", err);
+      setError("Couldn't set that up just now. Try again.");
     } finally {
+      setPending(false);
+    }
+  }
+
+  // "Create an Action": ensure the module is in the user's subscriptions,
+  // then send them to the account panel to build the flowchart rule.
+  async function handleCreateAction() {
+    if (!isLoggedIn) {
+      router.push("/login");
+      return;
+    }
+    setPending(true);
+    setError(null);
+    try {
+      if (accountEmail) await subscribe({ slug: moduleSlug, channel: "email", contact: accountEmail });
+      router.push("/account");
+    } catch (err) {
+      console.error("[SubscribeCard] create action failed:", err);
+      setError("Couldn't set that up just now. Try again.");
       setPending(false);
     }
   }
@@ -92,17 +114,18 @@ export default function SubscribeCard({
     return (
       <div className="rounded-xl border border-green/30 bg-row/60 p-5">
         <p className="text-lg">
-          You&apos;re subscribed to <strong>{moduleName}</strong> by {done}.
+          You&apos;re following <strong>{moduleName}</strong>
+          {done === "email" ? ", summaries will land in your email." : "."}
         </p>
         <p className="mt-1 text-sm text-ink-soft">
-          New agendas and summaries will arrive automatically.
+          Manage or add more actions from your account.
         </p>
-        <button
-          onClick={() => setDone(null)}
-          className="mt-3 text-sm underline underline-offset-4 hover:text-green"
+        <Link
+          href="/account"
+          className="mt-3 inline-block text-sm underline underline-offset-4 hover:text-green"
         >
-          Manage
-        </button>
+          Manage in your account
+        </Link>
       </div>
     );
   }
@@ -112,35 +135,59 @@ export default function SubscribeCard({
       <div className="rounded-xl border border-black/10 bg-white/50 p-5">
         <p className="text-lg">Subscribe</p>
         <p className="mt-1 text-sm text-ink-soft">
-          Get every new agenda summarized, sent to your account.
+          {choosing
+            ? "How would you like to follow this agenda?"
+            : "Get every new agenda from this source, your way."}
         </p>
         {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          {accountEmail && (
+
+        {!choosing ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
-              onClick={() => handleAccount("email")}
-              disabled={pending}
-              className="rounded-lg bg-green px-4 py-2 text-sm text-paper hover:opacity-90 disabled:opacity-50"
+              onClick={() => { setError(null); setChoosing(true); }}
+              className="rounded-lg bg-green px-4 py-2 text-sm text-paper hover:opacity-90"
             >
-              Subscribe by email ({accountEmail})
+              Subscribe
             </button>
-          )}
-          {SMS_ENABLED && accountPhone && (
+            <a
+              href={rss}
+              className="ml-auto flex items-center gap-1.5 text-sm text-ink-soft hover:text-green"
+            >
+              <span className="text-amber-500">●</span> RSS
+            </a>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2">
             <button
-              onClick={() => handleAccount("text")}
+              onClick={handleEmailAction}
               disabled={pending}
-              className="rounded-lg border border-green px-4 py-2 text-sm text-green hover:bg-green hover:text-paper disabled:opacity-50"
+              className="flex w-full items-center gap-3 rounded-lg border border-green bg-green/5 px-4 py-3 text-left hover:bg-green/10 disabled:opacity-50"
             >
-              Subscribe by text ({accountPhone})
+              <i className="fa-solid fa-envelope text-green-dark" />
+              <span>
+                <span className="block text-sm font-medium">Send the summary to my email</span>
+                <span className="block text-xs text-ink-soft">{accountEmail}</span>
+              </span>
             </button>
-          )}
-          <a
-            href={rss}
-            className="ml-auto flex items-center gap-1.5 text-sm text-ink-soft hover:text-green"
-          >
-            <span className="text-amber-500">●</span> RSS
-          </a>
-        </div>
+            <button
+              onClick={handleCreateAction}
+              disabled={pending}
+              className="flex w-full items-center gap-3 rounded-lg border border-black/15 px-4 py-3 text-left hover:border-green disabled:opacity-50"
+            >
+              <i className="fa-solid fa-diagram-project text-sky-600" />
+              <span>
+                <span className="block text-sm font-medium">Create an action</span>
+                <span className="block text-xs text-ink-soft">Push to Discord, a script, or a mailing list</span>
+              </span>
+            </button>
+            <button
+              onClick={() => setChoosing(false)}
+              className="text-xs text-ink-soft underline underline-offset-2 hover:text-green"
+            >
+              cancel
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -197,6 +244,12 @@ export default function SubscribeCard({
           <span className="text-amber-500">●</span> RSS
         </a>
       </div>
+      <p className="mt-3 text-sm text-ink-soft">
+        Want to push updates to Discord, a script, or a mailing list instead?{" "}
+        <button onClick={handleCreateAction} className="text-green underline underline-offset-2 hover:text-green-dark">
+          Create an action
+        </button>
+      </p>
     </div>
   );
 }
