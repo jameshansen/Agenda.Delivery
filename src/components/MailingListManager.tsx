@@ -19,6 +19,7 @@ import {
 import {
   BUILTIN_FIELDS,
   BUILTIN_KEYS,
+  missingRequiredFields,
   previewValues,
   renderTemplate,
   toFieldKey,
@@ -928,6 +929,7 @@ function TemplateDialog({
 }) {
   const [name, setName] = useState(template.name);
   const [html, setHtml] = useState(template.html);
+  const missing = missingRequiredFields(html);
 
   return (
     <Dialog title={template.id ? "Edit template" : "New template"} onClose={onClose} wide>
@@ -941,8 +943,15 @@ function TemplateDialog({
         fields={fields}
         previewHtml={renderTemplate(html, previewValues(fieldValues))}
       />
+      {missing.length > 0 && (
+        <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800">
+          <i className="fa-solid fa-triangle-exclamation mr-1.5" />
+          Add {missing.map((f) => `{{${f.key}}}`).join(" and ")} before saving —{" "}
+          {missing.map((f) => f.why).join(", and ")}.
+        </p>
+      )}
       <button
-        disabled={pending}
+        disabled={pending || missing.length > 0}
         onClick={() => onSave({ id: template.id, name, html })}
         className={`mt-4 w-full ${primaryBtnCls} py-2`}
       >

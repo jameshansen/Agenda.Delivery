@@ -27,7 +27,13 @@ import { revalidatePath } from "next/cache";
 import { inArray, isNull, or as sqlOr } from "drizzle-orm";
 import { chat, extractHtml, llmConfigured } from "@/lib/llm";
 import { sendHtmlMail, type SenderConfig } from "@/lib/email";
-import { BUILTIN_KEYS, previewValues, renderTemplate, toFieldKey } from "@/lib/mail-fields";
+import {
+  BUILTIN_KEYS,
+  missingRequiredFields,
+  previewValues,
+  renderTemplate,
+  toFieldKey,
+} from "@/lib/mail-fields";
 import { parseSubscribers } from "@/lib/mailing";
 import { EMAIL_RE } from "@/lib/contact";
 
@@ -483,8 +489,10 @@ export async function saveTemplate(input: { id?: string; name: string; html: str
   if (input.html.length > MAX_TEMPLATE_BYTES) {
     return { ok: false, error: "That template is too large. Link to images instead of embedding them." };
   }
-  if (!input.html.includes("{{content}}")) {
-    return { ok: false, error: "The template must include the {{content}} placeholder - that's where the updates go." };
+  const missing = missingRequiredFields(input.html);
+  if (missing.length > 0) {
+    const list = missing.map((f) => `{{${f.key}}} (${f.why})`).join(" and ");
+    return { ok: false, error: `The template is missing ${list}.` };
   }
 
   if (input.id) {
@@ -552,8 +560,10 @@ export async function generateTemplate(input: {
 
   try {
     const html = extractHtml(await chat(TEMPLATE_SYSTEM, user, { temperature: 0.6 }));
-    if (!html.includes("{{content}}")) {
-      return { ok: false, error: "The model left out the {{content}} placeholder. Try again, or adjust the prompt." };
+    const absent = missingRequiredFields(html);
+    if (absent.length > 0) {
+      const list = absent.map((f) => `{{${f.key}}}`).join(" and ");
+      return { ok: false, error: `The model left out ${list}. Try generating again.` };
     }
     return { ok: true, html };
   } catch (err) {

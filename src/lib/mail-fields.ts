@@ -35,6 +35,22 @@ export const BUILTIN_FIELDS: MergeFieldDef[] = [
 
 export const BUILTIN_KEYS = new Set(BUILTIN_FIELDS.map((f) => f.key));
 
+/**
+ * Placeholders a template cannot be saved without. {{content}} is what the
+ * email is for; {{unsubscribe_url}} is what the law is for -- CASL and
+ * CAN-SPAM both require a working opt-out in every commercial message, and
+ * a template is the one place a user could otherwise delete it.
+ */
+export const REQUIRED_FIELDS: { key: string; why: string }[] = [
+  { key: "content", why: "that's where the updates go" },
+  { key: "unsubscribe_url", why: "every recipient must be able to opt out" },
+];
+
+/** Which required placeholders a template is missing, if any. */
+export function missingRequiredFields(html: string): { key: string; why: string }[] {
+  return REQUIRED_FIELDS.filter((f) => !html.includes(`{{${f.key}}}`));
+}
+
 /** Normalize a user-typed field name into a placeholder key. */
 export function toFieldKey(label: string): string {
   return label

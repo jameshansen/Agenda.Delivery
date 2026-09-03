@@ -6,7 +6,12 @@
  */
 import assert from "node:assert/strict";
 import { parseSubscribers, describeSchedule, MONTH_DAYS } from "../src/lib/mailing";
-import { renderTemplate, toFieldKey, BUILTIN_FIELDS } from "../src/lib/mail-fields";
+import {
+  renderTemplate,
+  toFieldKey,
+  BUILTIN_FIELDS,
+  missingRequiredFields,
+} from "../src/lib/mail-fields";
 
 function checkParsing() {
   const { valid, invalid } = parseSubscribers(
@@ -53,6 +58,20 @@ function checkRendering() {
   }
 }
 
+function checkRequiredFields() {
+  // A template with no way out must be refused, however complete it looks.
+  const noOptOut = "<html><body><h1>{{organization_name}}</h1>{{content}}</body></html>";
+  assert.deepEqual(missingRequiredFields(noOptOut).map((f) => f.key), ["unsubscribe_url"]);
+
+  const noContent = '<html><body><a href="{{unsubscribe_url}}">out</a></body></html>';
+  assert.deepEqual(missingRequiredFields(noContent).map((f) => f.key), ["content"]);
+
+  assert.equal(missingRequiredFields("<p>nothing at all</p>").length, 2);
+
+  const good = '<body>{{content}}<a href="{{unsubscribe_url}}">Unsubscribe</a></body>';
+  assert.deepEqual(missingRequiredFields(good), []);
+}
+
 function checkSchedule() {
   assert.equal(
     describeSchedule({ sendPolicy: "weekly", threshold: 5, weekday: 2, monthDay: "first" }),
@@ -75,5 +94,6 @@ function checkSchedule() {
 
 checkParsing();
 checkRendering();
+checkRequiredFields();
 checkSchedule();
 console.log("selfcheck: all checks passed");

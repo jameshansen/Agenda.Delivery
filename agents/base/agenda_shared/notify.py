@@ -253,6 +253,28 @@ def _today_label() -> str:
     return f"{calendar.month_name[d.month]} {d.day}, {d.year}"
 
 
+def ensure_unsubscribe(html: str, url: str) -> str:
+    """Never let a message leave without a way out.
+
+    Templates are validated on save, but validation only binds the rows that
+    went through it -- a template saved before the rule, or edited straight in
+    the database, would otherwise produce mail nobody can escape. So the
+    guarantee lives here, at the last point before sending, rather than
+    upstream where it can be bypassed.
+    """
+    if url and url in html:
+        return html
+    footer = (
+        '<div style="margin:24px 0 0 0;padding:16px;text-align:center;'
+        'font-family:Arial,sans-serif;font-size:12px;color:#6f6c60;">'
+        f'<a href="{url}" style="color:#4f8a2f;">Unsubscribe from these emails</a>'
+        "</div>"
+    )
+    lower = html.lower()
+    idx = lower.rfind("</body>")
+    return html[:idx] + footer + html[idx:] if idx != -1 else html + footer
+
+
 def _items_html(pending: list[dict]) -> str:
     """The queued updates as the {{content}} block."""
     blocks = []
@@ -305,7 +327,8 @@ def _maybe_send_list(ml: dict) -> None:
             "subscriber_email": sub["email"],
             "unsubscribe_url": f"{settings.BASE_URL}/unsubscribe/{sub['id']}",
         }
-        if mailer.send(cfg, sub["email"], subject, mailer.render(template, values)):
+        body = ensure_unsubscribe(mailer.render(template, values), values["unsubscribe_url"])
+        if mailer.send(cfg, sub["email"], subject, body):
             sent += 1
 
     if sent == 0:

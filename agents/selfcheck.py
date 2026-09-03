@@ -13,7 +13,9 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, "/app")
 
 from agenda_shared import mailer                       # noqa: E402
-from agenda_shared.notify import _month_target_day, _schedule_due  # noqa: E402
+from agenda_shared.notify import (  # noqa: E402
+    _month_target_day, _schedule_due, ensure_unsubscribe,
+)
 try:
     # Escalation-only; the shared checks below still run in any other image.
     from agent_impl import looks_like_code_error       # noqa: E402
@@ -82,6 +84,24 @@ def check_schedule():
     assert _month_target_day("nonsense", datetime(2026, 2, 15).date()) == 1
 
 
+def check_unsubscribe_guarantee():
+    url = "https://agenda.delivery/unsubscribe/abc-123"
+
+    # A template that already opts out is left exactly as it is.
+    already = f'<html><body>hi <a href="{url}">Unsubscribe</a></body></html>'
+    assert ensure_unsubscribe(already, url) == already
+
+    # One that does not gets a footer injected inside <body>, not after </html>.
+    bare = "<html><body><p>news</p></body></html>"
+    fixed = ensure_unsubscribe(bare, url)
+    assert url in fixed, "unsubscribe link was not added"
+    assert fixed.index(url) < fixed.index("</body>"), "footer landed outside <body>"
+
+    # A fragment with no <body> still gets the link appended.
+    frag = "<div>news</div>"
+    assert url in ensure_unsubscribe(frag, url)
+
+
 def check_render():
     out = mailer.render("<p>{{greeting}} {{ name }}</p>", {"greeting": "Hi", "name": "Sam"})
     assert out == "<p>Hi Sam</p>", out
@@ -95,5 +115,6 @@ def check_render():
 if __name__ == "__main__":
     check_error_detection()
     check_schedule()
+    check_unsubscribe_guarantee()
     check_render()
     print("selfcheck: all checks passed")
