@@ -684,13 +684,36 @@ export async function saveSenderSettings(input: {
   return { ok: true };
 }
 
-/** Send the chosen template to one address, filled with sample values. */
+/**
+ * Send the chosen template to one address, filled with sample values.
+ *
+ * The destination is restricted to the account's own email or an address
+ * already on its subscriber list. Without that, this is an open relay: any
+ * signed-in user could send arbitrary HTML to an arbitrary stranger, from
+ * update@agenda.delivery, over our DKIM signature and our IP reputation. A
+ * rate limit alone only decides how fast that happens.
+ */
 export async function sendTestEmail(input: { to: string; templateId: string | null }) {
   const userId = await requireUserId();
   const to = input.to.trim().toLowerCase();
   if (!EMAIL_RE.test(to)) return { ok: false, error: "That isn't a valid email address." };
-  if (!rateLimit("test-mail:" + userId, 5, 10 * 60 * 1000).allowed) {
+  if (!rateLimit("test-mail:" + userId, 10, 10 * 60 * 1000).allowed) {
     return { ok: false, error: "Too many test emails. Try again in a few minutes." };
+  }
+
+  const [me] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+  if (me?.email?.toLowerCase() !== to) {
+    const [known] = await db
+      .select({ id: subscriberTable.id })
+      .from(subscriberTable)
+      .where(and(eq(subscriberTable.userId, userId), sql`lower(${subscriberTable.email}) = ${to}`))
+      .limit(1);
+    if (!known) {
+      return {
+        ok: false,
+        error: "Test emails can only go to your own address or someone already on your subscriber list.",
+      };
+    }
   }
 
   const [tpl] = input.templateId

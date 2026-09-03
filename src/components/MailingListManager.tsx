@@ -173,6 +173,7 @@ export default function MailingListManager({
           <TemplatesSection
             templates={templates}
             mergeFields={mergeFields}
+            accountEmail={accountEmail}
             pending={pending}
             run={run}
             onNote={setNote}
@@ -813,10 +814,11 @@ function EditSubscriberDialog({
 /* ══════════════ Templates ══════════════ */
 
 function TemplatesSection({
-  templates, mergeFields, pending, run, onNote, onError,
+  templates, mergeFields, accountEmail, pending, run, onNote, onError,
 }: {
   templates: Template[];
   mergeFields: MergeFieldRow[];
+  accountEmail: string;
   pending: boolean;
   run: RunFn;
   onNote: (s: string | null) => void;
@@ -824,6 +826,7 @@ function TemplatesSection({
 }) {
   const [editing, setEditing] = useState<{ id?: string; name: string; html: string } | null>(null);
   const [previewing, setPreviewing] = useState<Template | null>(null);
+  const [testing, setTesting] = useState<Template | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
 
   const fieldChips = [
@@ -893,6 +896,9 @@ function TemplatesSection({
               <button onClick={() => setPreviewing(t)} className={btnCls}>
                 View
               </button>
+              <button onClick={() => setTesting(t)} className={btnCls} title="Send this template to yourself">
+                <i className="fa-solid fa-paper-plane mr-1" /> Send test
+              </button>
               {t.isDefault ? (
                 <button
                   onClick={() => setEditing({ name: `${t.name} (copy)`, html: t.html })}
@@ -955,6 +961,19 @@ function TemplatesSection({
                   setPreviewing(null);
                 }
           }
+          onSendTest={() => setTesting(previewing)}
+        />
+      )}
+
+      {testing && (
+        <TestSendDialog
+          template={testing}
+          accountEmail={accountEmail}
+          onClose={() => setTesting(null)}
+          onSent={(to) => {
+            setTesting(null);
+            onNote(`Test email sent to ${to}.`);
+          }}
         />
       )}
 
@@ -975,13 +994,14 @@ function TemplatesSection({
 /** Full-size, scrollable preview. The built-in default can only be looked at
  * and copied -- it is shared by every account, so nobody edits it in place. */
 function TemplatePreviewDialog({
-  template, fieldValues, onClose, onDuplicate, onEdit,
+  template, fieldValues, onClose, onDuplicate, onEdit, onSendTest,
 }: {
   template: Template;
   fieldValues: Record<string, string>;
   onClose: () => void;
   onDuplicate: () => void;
   onEdit?: () => void;
+  onSendTest: () => void;
 }) {
   const [showSource, setShowSource] = useState(false);
   const rendered = renderTemplate(template.html, previewValues(fieldValues));
@@ -1029,11 +1049,69 @@ function TemplatePreviewDialog({
             Edit this template
           </button>
         )}
+        <button onClick={onSendTest} className={btnCls}>
+          <i className="fa-solid fa-paper-plane mr-1" /> Send test email
+        </button>
         <button onClick={onDuplicate} className={btnCls}>
           Duplicate to edit
         </button>
         <button onClick={onClose} className={`${btnCls} ml-auto`}>
           Close
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Send one template to an address, filled with sample content. Goes through
+ * whatever provider Sending Settings has saved, so it doubles as a check that
+ * SendGrid or an own SMTP server is actually working. */
+function TestSendDialog({
+  template, accountEmail, onClose, onSent,
+}: {
+  template: Template;
+  accountEmail: string;
+  onClose: () => void;
+  onSent: (to: string) => void;
+}) {
+  const [to, setTo] = useState(accountEmail);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await sendTestEmail({ to, templateId: template.id });
+      if (res.ok) onSent(to);
+      else setError(res.error ?? "Sending failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog title={`Send a test of "${template.name}"`} onClose={onClose}>
+      <div className="space-y-3">
+        <div>
+          <label className={labelCls}>To</label>
+          <input
+            autoFocus
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !busy) send(); }}
+            className={inputCls}
+            placeholder="you@example.com"
+          />
+        </div>
+        <p className="text-xs text-ink-soft">
+          Sent with sample content through the provider saved in Sending Settings,
+          so this also tells you whether that provider works. Goes to your own
+          address or someone already on your subscriber list.
+        </p>
+        {error && <p className="text-xs text-rose-700">{error}</p>}
+        <button disabled={busy || !to.trim()} onClick={send} className={`w-full ${primaryBtnCls} py-2`}>
+          {busy ? "Sending..." : "Send test email"}
         </button>
       </div>
     </Dialog>
