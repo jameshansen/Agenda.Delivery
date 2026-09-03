@@ -22,6 +22,7 @@ app = Flask(__name__)
 JOBS_KEY = "orchestrator:jobs"
 CHECK_SECS_DEFAULT = int(os.environ.get("CHECK_INTERVAL_SECS", "21600"))   # 6h
 SPIDER_SECS_DEFAULT = int(os.environ.get("SPIDER_INTERVAL_SECS", "3600"))  # 1h
+ESCALATION_SECS_DEFAULT = int(os.environ.get("ESCALATION_INTERVAL_SECS", "900"))  # 15m
 
 
 def enqueue(job: dict) -> None:
@@ -107,6 +108,13 @@ def _scheduler_loop() -> None:
                 flow = "spider_active" if _spider_mode() == "active" else "spider"
                 enqueue({"flow": flow, "trigger": "scheduled update"})
                 last["spider"] = now
+            # Escalation: sweeps failed runs, bad output and site errors,
+            # and emails the admin about anything new.
+            es = _schedule_secs("escalation", ESCALATION_SECS_DEFAULT)
+            if es and now - last.get("escalation", 0) >= es:
+                enqueue({"flow": "agent", "agent": "escalation",
+                         "trigger": "scheduled update"})
+                last["escalation"] = now
             # Mailing lists: cheap, self-gating (only sends when a list's
             # threshold or schedule is actually due). Check once a minute.
             if now - last.get("mailing", 0) >= 60:

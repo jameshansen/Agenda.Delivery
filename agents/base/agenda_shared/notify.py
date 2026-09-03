@@ -14,14 +14,13 @@ call must never take down the pipeline that triggers it, so failures are
 logged and swallowed, never raised.
 """
 
+import calendar
 import re
-import smtplib
-from datetime import datetime, timezone
-from email.message import EmailMessage
+from datetime import date, datetime, timezone
 
 import requests
 
-from . import db, llm, settings
+from . import db, llm, mailer, settings
 
 AGENDA_CHAR_CAP = 8000
 
@@ -35,19 +34,7 @@ def _post_json(url: str, body: dict, headers: dict | None = None) -> None:
 
 def _send_email(to: str, subject: str, body: str) -> None:
     """Relay through the host Postfix, which DKIM-signs and delivers."""
-    if not settings.SMTP_HOST:
-        print("[notify] SMTP_HOST unset; skipping email leg")
-        return
-    msg = EmailMessage()
-    msg["From"] = settings.MAIL_FROM
-    msg["To"] = to
-    msg["Subject"] = subject
-    msg.set_content(body)
-    try:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as s:
-            s.send_message(msg)
-    except Exception as exc:
-        print(f"[notify] email to {to} failed: {exc}")
+    mailer.send_plain(to, subject, body)
 
 
 def notify_subscribers(module_id: str, module_name: str, module_slug: str, meeting_title: str) -> None:
@@ -175,48 +162,155 @@ def run_automation_rules(module_id: str, ctx: dict) -> None:
             print(f"[notify] rule {rule['id']} delivery ({kind}) failed: {exc}")
 
 
-# ── Mailing lists ─────────────────────────────────────────────
+# ── Mailing lists ─────────────────────────────
+DEFAULT_TEMPLATE_ID = "default-template-00000000000000000001"
+
+
+def _month_target_day(policy_day: str, today: date) -> int:
+    """Resolve 'first' | 'last' | '2'..'28' to a day number for this month."""
+    if policy_day == "first":
+        return 1
+    if policy_day == "last":
+        return calendar.monthrange(today.year, today.month)[1]
+    try:
+        return max(1, min(28, int(policy_day)))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _schedule_due(ml: dict, pending_count: int) -> bool:
+    """Has this list hit its threshold, or is today its send day?"""
+    policy = ml.get("send_policy") or "threshold"
+    if policy == "threshold":
+        return pending_count >= (ml.get("threshold") or 1)
+
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    last = ml.get("last_sent_at")
+    if last is not None and last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    # One send per calendar day, whatever else happens on the tick.
+    if last is not None and last.date() == today:
+        return False
+
+    if policy == "weekly":
+        return today.weekday() == int(ml.get("weekday") or 0)
+    if policy == "monthly":
+        return today.day == _month_target_day(ml.get("month_day") or "first", today)
+    # Unknown policy: an interval fallback rather than never sending.
+    return last is None or (now - last).total_seconds() >= 604800
+
+
+def _recipients(ml: dict) -> list[dict]:
+    """Active subscribers this list sends to: the whole account book, or
+    just the ones picked for this list."""
+    if (ml.get("audience") or "all") == "all":
+        return db.query(
+            "SELECT id, email, name, fields FROM subscriber "
+            "WHERE user_id = %s AND status = 'active' ORDER BY created_at",
+            (ml["user_id"],),
+        )
+    return db.query(
+        """SELECT s.id, s.email, s.name, s.fields FROM subscriber s
+             JOIN mailing_list_subscriber mls ON mls.subscriber_id = s.id
+            WHERE mls.list_id = %s AND s.status = 'active'
+            ORDER BY s.created_at""",
+        (ml["id"],),
+    )
+
+
+def _template_html(ml: dict) -> str:
+    row = None
+    if ml.get("template_id"):
+        row = db.one("SELECT html FROM email_template WHERE id = %s", (ml["template_id"],))
+    if not row:
+        row = db.one("SELECT html FROM email_template WHERE id = %s", (DEFAULT_TEMPLATE_ID,))
+    # Last resort if the default row was never seeded: the content alone.
+    return row["html"] if row else "{{content}}"
+
+
+def _account_fields(user_id: str) -> dict:
+    try:
+        rows = db.query("SELECT key, value FROM merge_field WHERE user_id = %s", (user_id,))
+    except Exception as exc:
+        print(f"[notify] loading merge_fields failed: {exc}")
+        return {}
+    return {r["key"]: r["value"] for r in rows}
+
+
+def _as_html(text: str | None) -> str:
+    """User-typed header/footer into a safe HTML fragment."""
+    return mailer.escape(text or "").replace("\n", "<br />")
+
+
+def _today_label() -> str:
+    d = datetime.now(timezone.utc)
+    return f"{calendar.month_name[d.month]} {d.day}, {d.year}"
+
+
+def _items_html(pending: list[dict]) -> str:
+    """The queued updates as the {{content}} block."""
+    blocks = []
+    for p in pending:
+        blocks.append(
+            '<div style="margin:0 0 20px 0;">'
+            f'<div style="font-weight:bold;margin-bottom:4px;">{mailer.escape(p["subject"])}</div>'
+            f'<div style="white-space:pre-wrap;">{mailer.escape(p["body"])}</div>'
+            "</div>"
+        )
+    return "".join(blocks)
+
+
 def _maybe_send_list(ml: dict) -> None:
     pending = db.query(
         "SELECT id, subject, body FROM mailing_queue WHERE list_id = %s AND sent_at IS NULL ORDER BY created_at",
         (ml["id"],),
     )
-    if not pending:
+    if not pending or not _schedule_due(ml, len(pending)):
         return
 
-    if ml["send_policy"] == "threshold":
-        due = len(pending) >= (ml["threshold"] or 1)
-    else:  # schedule
-        interval = 86400 if ml["frequency"] == "daily" else 604800
-        last = ml.get("last_sent_at")
-        if last is not None and last.tzinfo is None:
-            last = last.replace(tzinfo=timezone.utc)
-        due = last is None or (datetime.now(timezone.utc) - last).total_seconds() >= interval
-    if not due:
-        return
-
-    recipients = [e.strip() for e in re.split(r"[\n,]+", ml["emails"] or "") if e.strip()]
+    recipients = _recipients(ml)
     if not recipients:
-        return  # keep items queued until the list has recipients
+        return  # keep items queued until the list has somewhere to go
 
-    parts = []
-    if ml["header"]:
-        parts.append(ml["header"])
-    for p in pending:
-        parts.append(f"— {p['subject']} —\n{p['body']}")
-    if ml["footer"]:
-        parts.append(ml["footer"])
-    body = "\n\n".join(parts)
+    cfg = mailer.sender_settings(ml.get("user_id"))
+    template = _template_html(ml)
+    account_fields = _account_fields(ml["user_id"])
     n = len(pending)
     subject = f"{ml['name']}: {n} update{'s' if n != 1 else ''}"
 
-    for to in recipients:
-        _send_email(to, subject, body)
+    base = {
+        **account_fields,
+        "organization_name": account_fields.get("organization_name") or ml["name"],
+        "list_name": ml["name"],
+        "subject": subject,
+        "header": _as_html(ml.get("header")),
+        "footer": _as_html(ml.get("footer")),
+        "content": _items_html(pending),
+        "date": _today_label(),
+    }
+
+    sent = 0
+    for sub in recipients:
+        per_sub = sub.get("fields") or {}
+        values = {
+            **base,
+            **(per_sub if isinstance(per_sub, dict) else {}),
+            "subscriber_name": sub.get("name") or "",
+            "subscriber_email": sub["email"],
+            "unsubscribe_url": f"{settings.BASE_URL}/unsubscribe/{sub['id']}",
+        }
+        if mailer.send(cfg, sub["email"], subject, mailer.render(template, values)):
+            sent += 1
+
+    if sent == 0:
+        print(f"[notify] mailing list '{ml['name']}' reached no one; leaving {n} items queued")
+        return
 
     db.execute("UPDATE mailing_queue SET sent_at = now() WHERE id = ANY(%s)",
                ([p["id"] for p in pending],))
     db.execute("UPDATE mailing_list SET last_sent_at = now() WHERE id = %s", (ml["id"],))
-    print(f"[notify] mailing list '{ml['name']}' sent {n} items to {len(recipients)} recipients")
+    print(f"[notify] mailing list '{ml['name']}' sent {n} items to {sent} recipients")
 
 
 def flush_mailing_lists() -> None:

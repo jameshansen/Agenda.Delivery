@@ -52,6 +52,7 @@ const AGENTS = [
   { key: "Summary Agent", short: "Summary", desc: "Generates AI summaries and highlights", dot: "bg-rose-500", pill: "bg-rose-500 text-white" },
   { key: "Keyword Agent", short: "Keyword", desc: "Bespoke per-keyword summaries", dot: "bg-teal-500", pill: "bg-teal-500 text-white" },
   { key: "Categorization Agent", short: "Categorization", desc: "Classifies agenda type", dot: "bg-orange-500", pill: "bg-orange-500 text-white" },
+  { key: "Escalation Agent", short: "Escalation", desc: "Watches for failures and escalates to the admin", dot: "bg-red-500", pill: "bg-red-500 text-white" },
 ] as const;
 
 /** Icon + color per known `tool` value. Events with no tool (lifecycle
@@ -60,10 +61,13 @@ const TOOL_META: Record<string, { icon: string; color: string; label: string }> 
   "agenda.find_latest": { icon: "fa-bullseye", color: "text-orange-600", label: "find latest" },
   "browser.nav": { icon: "fa-globe", color: "text-sky-600", label: "browser nav" },
   "db.save_config": { icon: "fa-database", color: "text-purple-600", label: "save config" },
+  "escalate.notify": { icon: "fa-bell", color: "text-red-600", label: "escalate" },
+  "escalate.scan": { icon: "fa-magnifying-glass-chart", color: "text-red-500", label: "sweep" },
   "geo.locate": { icon: "fa-location-dot", color: "text-amber-600", label: "geolocate" },
   "llm.highlights": { icon: "fa-wand-magic-sparkles", color: "text-rose-600", label: "highlights" },
   "llm.repair": { icon: "fa-wand-magic-sparkles", color: "text-amber-600", label: "repair" },
   "llm.summarize": { icon: "fa-brain", color: "text-violet-600", label: "summarize" },
+  "llm.triage": { icon: "fa-stethoscope", color: "text-red-600", label: "triage" },
   "queue.enqueue": { icon: "fa-list-ol", color: "text-slate-500", label: "enqueue" },
   "s3.put": { icon: "fa-cloud-arrow-up", color: "text-sky-500", label: "store" },
   "schedule.predict": { icon: "fa-clock", color: "text-indigo-600", label: "schedule" },
@@ -77,10 +81,10 @@ const DEFAULT_TOOL_META = { icon: "fa-flag", color: "text-ink-soft", label: "" }
  * logos here (no assets, and reproducing brand marks isn't appropriate) --
  * each gets a small abstract monogram chip instead, colored in the
  * general spirit of the provider's brand without copying it. Matched by
- * prefix since tags vary ("glm-5.2" has no tag, "gemma4:31b" and
+ * prefix since tags vary ("glm-5.3" has no tag, "gemma4:31b" and
  * "deepseek-v4-flash:0731" do). */
 const MODEL_META: { prefix: string; label: string; glyph: string; chip: string; text: string }[] = [
-  { prefix: "glm", label: "GLM 5.2", glyph: "Z", chip: "bg-blue-600", text: "text-blue-700" },
+  { prefix: "glm", label: "GLM 5.3", glyph: "Z", chip: "bg-blue-600", text: "text-blue-700" },
   { prefix: "gemma4", label: "Gemma", glyph: "G", chip: "bg-violet-500", text: "text-violet-700" },
   { prefix: "deepseek", label: "DeepSeek", glyph: "D", chip: "bg-indigo-600", text: "text-indigo-700" },
 ];
@@ -434,7 +438,7 @@ export default function AgentsPage() {
 
       {/* ===================== Mini Mode ===================== */}
       {mode === "mini" && (
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7">
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-8">
           {AGENTS.map((agent) => {
             const agentEvents = columns[agent.key] ?? [];
             return (

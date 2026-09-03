@@ -24,7 +24,7 @@ agenda.delivery grew out of community work. It started with the [Langley Urbanis
 - **Backend:** Next.js Route Handlers + Server Actions (BFF)
 - **Data:** Postgres · Drizzle ORM
 - **Auth:** Auth.js (NextAuth v5) with Google OAuth
-- **LLM:** Ollama cloud (glm-5.2 for agents, gemma4 for summaries) — OpenAI-compatible endpoint
+- **LLM:** Ollama cloud (glm-5.3 for agents, gemma4 for summaries) — OpenAI-compatible endpoint
 - **Agents:** Custom framework (base class, tool registry, SSE event streaming) — no external agent library
 - **Brand font:** Gelica (local, `src/app/fonts`)
 - Agents, data-engineering, and infra are later phases (see roadmap).
@@ -77,9 +77,9 @@ Building front-to-back: UI and site first, backend after.
   Auth.js Google OAuth, accounts, subscriptions. All pages read live data from
   the DB (verified end-to-end on Docker Postgres).
 - **Phase 4 — Agent system** ✅ Agent framework (base class, tool registry,
-  event emitter, SSE streaming); 6 agents (Spider, Scraper Create/Repair,
-  Checking, Summary, Keyword, Categorization); Ollama cloud LLM client
-  (glm-5.2 for reasoning, gemma4 for summaries); API routes to trigger runs
+  event emitter, SSE streaming); 7 agents (Spider, Scraper Create/Repair,
+  Checking, Summary, Keyword, Categorization, Escalation); Ollama cloud LLM
+  client (glm-5.3 for reasoning, gemma4 for summaries); API routes to trigger runs
   and stream events; live agent-activity UI with run buttons; `agent_run`,
   `scrape_config`, `spider_candidate` tables; dev mock LLM so it works
   without an API key.

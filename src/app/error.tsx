@@ -12,6 +12,18 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error("[error.tsx]", error);
+    // Report it so the Escalation Agent can see it; a failed report is not
+    // worth surfacing on a page that is already showing an error.
+    fetch("/api/site-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error.message || "Unhandled client error",
+        stack: error.stack,
+        digest: error.digest,
+        path: typeof window !== "undefined" ? window.location.pathname : undefined,
+      }),
+    }).catch(() => {});
   }, [error]);
 
   return (

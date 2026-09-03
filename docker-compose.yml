@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 # agenda.delivery — one-command deploy.
 #   docker compose up --build
-# Brings up: nginx, ui, orchestrator, 6 agent containers, redis, postgres.
+# Brings up: nginx, ui, orchestrator, 7 agent containers, redis, postgres.
 # ─────────────────────────────────────────────────────────────
 
 x-agent-env: &agent-env
@@ -9,9 +9,10 @@ x-agent-env: &agent-env
   REDIS_URL: redis://redis:6379/0
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
   OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
-  AGENT_MODEL: ${AGENT_MODEL:-glm-5.2}
+  AGENT_MODEL: ${AGENT_MODEL:-glm-5.3}
   SUMMARY_MODEL: ${SUMMARY_MODEL:-gemma4:31b}
   RENDERER_URL: http://renderer:8000
+  BASE_URL: ${BASE_URL:-https://agenda.delivery}
 
 x-agent-build: &agent-build
   context: ./agents
@@ -65,6 +66,8 @@ services:
       <<: *agent-env
       CHECK_INTERVAL_SECS: ${CHECK_INTERVAL_SECS:-21600}
       SPIDER_INTERVAL_SECS: ${SPIDER_INTERVAL_SECS:-3600}
+      ESCALATION_INTERVAL_SECS: ${ESCALATION_INTERVAL_SECS:-900}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-jameshansen.bc@gmail.com}
       # notify.py emails subscribers via the host Postfix relay (Discord/webhook
       # pushes don't need this). "mailhost" maps to the host gateway below.
       SMTP_HOST: ${SMTP_HOST:-mailhost}
@@ -136,6 +139,20 @@ services:
     <<: *agent-common
     build: { <<: *agent-build, args: { AGENT: keyword } }
     environment: *agent-env
+
+  # Watches the other agents (and the site) and mails the admin when
+  # something needs a human. Needs the SMTP relay, unlike its siblings.
+  escalation:
+    <<: *agent-common
+    build: { <<: *agent-build, args: { AGENT: escalation } }
+    environment:
+      <<: *agent-env
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-jameshansen.bc@gmail.com}
+      SMTP_HOST: ${SMTP_HOST:-mailhost}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      MAIL_FROM: ${MAIL_FROM:-agenda.delivery <update@agenda.delivery>}
+    extra_hosts:
+      - "mailhost:host-gateway"
 
   # ── UI (Next.js, read-only DB reader) ──
   ui:

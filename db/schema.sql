@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS agent_event (
   prompt TEXT,
   response TEXT,
   -- The Ollama model that actually served this step's LLM call (e.g.
-  -- "glm-5.2", "gemma4:31b"), when it was an LLM call. NULL otherwise.
+  -- "glm-5.3", "gemma4:31b"), when it was an LLM call. NULL otherwise.
   model TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT now()
 );
@@ -277,7 +277,7 @@ CREATE TABLE IF NOT EXISTS agent_config (
   agent          agent_type PRIMARY KEY,
   display_name   TEXT NOT NULL,
   system_prompt  TEXT NOT NULL,
-  model          TEXT NOT NULL DEFAULT 'glm-5.2',
+  model          TEXT NOT NULL DEFAULT 'glm-5.3',
   -- Free-form knobs (temperature, max chars, retry counts, ...).
   params         JSONB NOT NULL DEFAULT '{}',
   -- Seconds between scheduled runs; NULL = not scheduled (triggered only).
@@ -383,3 +383,140 @@ CREATE TABLE IF NOT EXISTS module_keyword_output (
   updated_at  TIMESTAMP NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS module_keyword_output_uniq ON module_keyword_output (module_id, artifact_id);
+
+-- ─────────────────────────────────────────────────────────────
+-- GLM 5.3 (Ollama Cloud retired the 5.2 tag). Existing agent_config
+-- rows still point at the old tag; move them.
+-- ─────────────────────────────────────────────────────────────
+UPDATE agent_config SET model = 'glm-5.3' WHERE model = 'glm-5.2';
+
+-- ─────────────────────────────────────────────────────────────
+-- Escalation Agent — watches for failures and escalates to the admin.
+-- ─────────────────────────────────────────────────────────────
+ALTER TYPE agent_type ADD VALUE IF NOT EXISTS 'escalation';
+
+-- Errors reported by the Next.js UI (error boundary + server catch points).
+-- The escalation agent reads this table; nothing else writes it.
+CREATE TABLE IF NOT EXISTS site_error (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  source     TEXT NOT NULL DEFAULT 'ui',   -- 'ui' | 'server' | 'api'
+  level      TEXT NOT NULL DEFAULT 'error',
+  message    TEXT NOT NULL,
+  detail     TEXT,
+  path       TEXT,
+  digest     TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS site_error_created_idx ON site_error (created_at DESC);
+
+-- One row per distinct problem the escalation agent found. `fingerprint`
+-- is what stops the same failure being emailed on every tick.
+CREATE TABLE IF NOT EXISTS escalation (
+  id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  kind        TEXT NOT NULL,               -- 'agent_run' | 'bad_output' | 'site_error' | 'module_broken'
+  fingerprint TEXT NOT NULL UNIQUE,
+  severity    TEXT NOT NULL DEFAULT 'warning',  -- 'info' | 'warning' | 'critical'
+  subject     TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  module_id   TEXT REFERENCES module(id) ON DELETE SET NULL,
+  run_id      TEXT,
+  notified_at TIMESTAMP,
+  created_at  TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS escalation_unsent_idx ON escalation (created_at) WHERE notified_at IS NULL;
+
+-- ─────────────────────────────────────────────────────────────
+-- Mailing list manager: global subscribers, templates, sending settings.
+-- ─────────────────────────────────────────────────────────────
+
+-- Subscribers are per ACCOUNT, not per list — one address, reusable across
+-- every list the account owns (the Substack model).
+CREATE TABLE IF NOT EXISTS subscriber (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id    TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  email      TEXT NOT NULL,
+  name       TEXT NOT NULL DEFAULT '',
+  status     TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'unsubscribed'
+  -- Per-subscriber merge-field overrides, keyed by merge_field.key.
+  fields     JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS subscriber_user_email_uniq ON subscriber (user_id, lower(email));
+
+-- Which subscribers a list sends to when its audience is 'selected'.
+CREATE TABLE IF NOT EXISTS mailing_list_subscriber (
+  list_id       TEXT NOT NULL REFERENCES mailing_list(id) ON DELETE CASCADE,
+  subscriber_id TEXT NOT NULL REFERENCES subscriber(id) ON DELETE CASCADE,
+  PRIMARY KEY (list_id, subscriber_id)
+);
+
+-- HTML email templates. user_id NULL = the built-in agenda.delivery default,
+-- seeded once and shared by every account (read-only in the UI; users
+-- duplicate it to edit). One source of truth for the UI and the sender.
+CREATE TABLE IF NOT EXISTS email_template (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id    TEXT REFERENCES "user"(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  html       TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT now(),
+  updated_at TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS email_template_user_idx ON email_template (user_id);
+
+-- Template placeholder values, e.g. key 'organization_name'. Built-in keys
+-- are defined in code; rows here hold the user's value plus any custom key.
+CREATE TABLE IF NOT EXISTS merge_field (
+  id      TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  key     TEXT NOT NULL,
+  label   TEXT NOT NULL,
+  value   TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS merge_field_user_key_uniq ON merge_field (user_id, key);
+
+-- How an account's mailing lists actually leave the building. 'default'
+-- relays through agenda.delivery's own Postfix as update@agenda.delivery.
+CREATE TABLE IF NOT EXISTS sender_settings (
+  user_id      TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+  provider     TEXT NOT NULL DEFAULT 'default',   -- 'default' | 'sendgrid' | 'smtp'
+  from_email   TEXT NOT NULL DEFAULT '',
+  from_name    TEXT NOT NULL DEFAULT '',
+  sendgrid_key TEXT,
+  smtp_host    TEXT,
+  smtp_port    INTEGER NOT NULL DEFAULT 587,
+  smtp_user    TEXT,
+  smtp_pass    TEXT,
+  smtp_secure  BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at   TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- Mailing list: audience, template, and the new schedule shape.
+ALTER TABLE mailing_list ADD COLUMN IF NOT EXISTS audience    TEXT NOT NULL DEFAULT 'all';    -- 'all' | 'selected'
+ALTER TABLE mailing_list ADD COLUMN IF NOT EXISTS template_id TEXT REFERENCES email_template(id) ON DELETE SET NULL;
+ALTER TABLE mailing_list ADD COLUMN IF NOT EXISTS weekday     INTEGER NOT NULL DEFAULT 0;      -- 0 = Monday .. 6 = Sunday
+ALTER TABLE mailing_list ADD COLUMN IF NOT EXISTS month_day   TEXT NOT NULL DEFAULT 'first';   -- 'first' | 'last' | '2'..'28'
+
+-- send_policy is now 'threshold' | 'weekly' | 'monthly'. The old 'schedule'
+-- policy carried the cadence in `frequency`; fold it into the new shape.
+UPDATE mailing_list SET send_policy = 'weekly' WHERE send_policy = 'schedule';
+
+-- Lift the old newline/comma `emails` blob into real subscriber rows so
+-- existing lists keep sending to exactly who they were sending to.
+INSERT INTO subscriber (user_id, email)
+SELECT ml.user_id, lower(trim(e))
+  FROM mailing_list ml,
+       LATERAL regexp_split_to_table(ml.emails, '[\n,;]+') AS e
+ WHERE trim(e) <> ''
+ON CONFLICT (user_id, lower(email)) DO NOTHING;
+
+INSERT INTO mailing_list_subscriber (list_id, subscriber_id)
+SELECT ml.id, s.id
+  FROM mailing_list ml
+  JOIN LATERAL regexp_split_to_table(ml.emails, '[\n,;]+') AS e ON TRUE
+  JOIN subscriber s ON s.user_id = ml.user_id AND lower(s.email) = lower(trim(e))
+ WHERE trim(e) <> ''
+ON CONFLICT DO NOTHING;
+
+-- A list that had an explicit address blob was never an "everyone" list.
+UPDATE mailing_list SET audience = 'selected'
+ WHERE audience = 'all' AND coalesce(trim(emails), '') <> '';

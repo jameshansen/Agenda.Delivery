@@ -176,7 +176,7 @@ export const agentEvents = pgTable("agent_event", {
   /** Full system+user LLM prompt / raw response for this step, when it was an LLM call. */
   prompt: text("prompt"),
   response: text("response"),
-  /** The Ollama model that served this step's LLM call (e.g. "glm-5.2"). */
+  /** The Ollama model that served this step's LLM call (e.g. "glm-5.3"). */
   model: text("model"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -277,10 +277,19 @@ export const mailingLists = pgTable("mailing_list", {
   name: text("name").notNull(),
   header: text("header").notNull().default(""),
   footer: text("footer").notNull().default(""),
+  /** Legacy address blob, migrated into `subscriber`. Kept for old rows. */
   emails: text("emails").notNull().default(""),
-  sendPolicy: text("send_policy").notNull().default("threshold"), // "threshold" | "schedule"
+  sendPolicy: text("send_policy").notNull().default("threshold"), // "threshold" | "weekly" | "monthly"
   threshold: integer("threshold").notNull().default(5),
-  frequency: text("frequency").notNull().default("weekly"), // "daily" | "weekly"
+  /** Superseded by sendPolicy + weekday/monthDay. */
+  frequency: text("frequency").notNull().default("weekly"),
+  /** "all" = every active subscriber on the account, "selected" = the join table. */
+  audience: text("audience").notNull().default("all"),
+  templateId: text("template_id").references(() => emailTemplates.id, { onDelete: "set null" }),
+  /** 0 = Monday .. 6 = Sunday, for sendPolicy "weekly". */
+  weekday: integer("weekday").notNull().default(0),
+  /** "first" | "last" | "2".."28", for sendPolicy "monthly". */
+  monthDay: text("month_day").notNull().default("first"),
   lastSentAt: timestamp("last_sent_at", { mode: "date" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -344,6 +353,7 @@ export const agentTypeEnum = pgEnum("agent_type", [
   "categorization",
   "summary",
   "keyword",
+  "escalation",
 ]);
 
 /**
@@ -435,9 +445,106 @@ export const agentConfig = pgTable("agent_config", {
   agent: agentTypeEnum("agent").primaryKey(),
   displayName: text("display_name").notNull(),
   systemPrompt: text("system_prompt").notNull(),
-  model: text("model").notNull().default("glm-5.2"),
+  model: text("model").notNull().default("glm-5.3"),
   params: jsonb("params").notNull().default({}),
   scheduleSecs: integer("schedule_secs"),
   enabled: boolean("enabled").notNull().default(true),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+/* ---- Escalation Agent ---- */
+
+/** Errors reported by the UI's error boundary + server catch points. The
+ * Escalation Agent reads this table; nothing else writes it. */
+export const siteErrors = pgTable(
+  "site_error",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    source: text("source").notNull().default("ui"), // "ui" | "server" | "api"
+    level: text("level").notNull().default("error"),
+    message: text("message").notNull(),
+    detail: text("detail"),
+    path: text("path"),
+    digest: text("digest"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("site_error_created_idx").on(t.createdAt)],
+);
+
+/** One row per distinct problem found; `fingerprint` stops re-emailing it. */
+export const escalations = pgTable("escalation", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  kind: text("kind").notNull(), // "agent_run" | "bad_output" | "site_error" | "module_broken"
+  fingerprint: text("fingerprint").notNull().unique(),
+  severity: text("severity").notNull().default("warning"),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  moduleId: text("module_id").references(() => modules.id, { onDelete: "set null" }),
+  runId: text("run_id"),
+  notifiedAt: timestamp("notified_at", { mode: "date" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/* ---- Mailing list manager ---- */
+
+/** Subscribers belong to the ACCOUNT, not a list — one address, reusable
+ * across every list the account owns. */
+export const subscribers = pgTable(
+  "subscriber",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    name: text("name").notNull().default(""),
+    status: text("status").notNull().default("active"), // "active" | "unsubscribed"
+    /** Per-subscriber merge-field overrides, keyed by mergeField.key. */
+    fields: jsonb("fields").notNull().default({}),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("subscriber_user_idx").on(t.userId)],
+);
+
+/** Who a list sends to when its audience is "selected". */
+export const mailingListSubscribers = pgTable(
+  "mailing_list_subscriber",
+  {
+    listId: text("list_id").notNull().references(() => mailingLists.id, { onDelete: "cascade" }),
+    subscriberId: text("subscriber_id").notNull().references(() => subscribers.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.listId, t.subscriberId] })],
+);
+
+/** HTML templates. userId NULL = the shared built-in default. */
+export const emailTemplates = pgTable("email_template", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  html: text("html").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+/** Template placeholder values. Built-in keys live in code; rows hold the
+ * user's value plus any key they added themselves. */
+export const mergeFields = pgTable("merge_field", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  label: text("label").notNull(),
+  value: text("value").notNull().default(""),
+});
+
+/** How an account's mailing lists actually leave the building. */
+export const senderSettings = pgTable("sender_settings", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("default"), // "default" | "sendgrid" | "smtp"
+  fromEmail: text("from_email").notNull().default(""),
+  fromName: text("from_name").notNull().default(""),
+  sendgridKey: text("sendgrid_key"),
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port").notNull().default(587),
+  smtpUser: text("smtp_user"),
+  smtpPass: text("smtp_pass"),
+  smtpSecure: boolean("smtp_secure").notNull().default(true),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
 });

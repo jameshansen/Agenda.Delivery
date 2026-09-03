@@ -20,7 +20,7 @@ services:
       # Ollama cloud LLM
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
-      AGENT_MODEL: ${AGENT_MODEL:-glm-5.2}
+      AGENT_MODEL: ${AGENT_MODEL:-glm-5.3}
       SUMMARY_MODEL: ${SUMMARY_MODEL:-gemma4:31b}
       # Next.js
       NODE_ENV: production

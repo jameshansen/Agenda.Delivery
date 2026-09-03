@@ -80,7 +80,7 @@ jobs:
             AUTH_GOOGLE_SECRET=${{ secrets.AUTH_GOOGLE_SECRET }}
             OLLAMA_BASE_URL=${{ secrets.OLLAMA_BASE_URL }}
             OLLAMA_API_KEY=${{ secrets.OLLAMA_API_KEY }}
-            AGENT_MODEL=glm-5.2
+            AGENT_MODEL=glm-5.3
             SUMMARY_MODEL=gemma4:31b
             NEXTAUTH_URL=https://agenda.delivery
             NGINX_PORT=80

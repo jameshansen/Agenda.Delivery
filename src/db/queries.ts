@@ -1,4 +1,4 @@
-import { eq, asc, desc, sql, and, ilike, or, inArray } from "drizzle-orm";
+import { eq, asc, desc, sql, and, ilike, or, inArray, isNull } from "drizzle-orm";
 import { db } from "./index";
 import {
   modules,
@@ -9,12 +9,18 @@ import {
   agentRuns,
   subscriptions,
   users,
+  accounts,
   automationTargets,
   automationArtifacts,
   automationRules,
   mailingLists,
   mailingQueue,
+  mailingListSubscribers,
   moduleKeywordOutputs,
+  subscribers,
+  emailTemplates,
+  mergeFields,
+  senderSettings,
 } from "./schema";
 import { fmtDate } from "@/lib/format";
 
@@ -449,10 +455,28 @@ export async function getSubscriptionsForUser(
   }));
 }
 
-/** Account-page data for the Subscriptions → Artifacts → Actions flowchart + mailing lists. */
+/** Everything the account page renders: the Subscriptions → Artifacts →
+ * Actions flowchart, the mailing-list manager, and account/API settings. */
 export async function getAccountData(userId: string) {
-  const [[user], subs, targets, artifacts, rules, lists, queueCounts] = await Promise.all([
-    db.select({ apiKeyPrefix: users.apiKeyPrefix }).from(users).where(eq(users.id, userId)),
+  const [
+    [user],
+    subs,
+    targets,
+    artifacts,
+    rules,
+    lists,
+    queueCounts,
+    subscriberRows,
+    listMembers,
+    templates,
+    fieldRows,
+    [sender],
+    providers,
+  ] = await Promise.all([
+    db
+      .select({ apiKeyPrefix: users.apiKeyPrefix, name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, userId)),
     db
       .select({
         moduleId: subscriptions.moduleId,
@@ -474,6 +498,25 @@ export async function getAccountData(userId: string) {
       .from(mailingQueue)
       .where(sql`${mailingQueue.sentAt} IS NULL`)
       .groupBy(mailingQueue.listId),
+    db.select().from(subscribers).where(eq(subscribers.userId, userId)).orderBy(asc(subscribers.createdAt)),
+    // Membership rows for this account's lists only — the join keeps another
+    // account's list ids out of the payload.
+    db
+      .select({ listId: mailingListSubscribers.listId, subscriberId: mailingListSubscribers.subscriberId })
+      .from(mailingListSubscribers)
+      .innerJoin(mailingLists, eq(mailingListSubscribers.listId, mailingLists.id))
+      .where(eq(mailingLists.userId, userId)),
+    // The user's own templates plus the shared built-in default (user_id NULL).
+    db
+      .select()
+      .from(emailTemplates)
+      .where(or(eq(emailTemplates.userId, userId), isNull(emailTemplates.userId))!)
+      .orderBy(asc(emailTemplates.userId), asc(emailTemplates.createdAt)),
+    db.select().from(mergeFields).where(eq(mergeFields.userId, userId)).orderBy(asc(mergeFields.label)),
+    db.select().from(senderSettings).where(eq(senderSettings.userId, userId)),
+    // Which sign-in providers are linked, so the settings tab can say whether
+    // the account is a Google one or an email-code one.
+    db.select({ provider: accounts.provider }).from(accounts).where(eq(accounts.userId, userId)),
   ]);
 
   // Dedupe subscriptions by module (a user may have both an email + text row).
@@ -483,8 +526,16 @@ export async function getAccountData(userId: string) {
   const queued: Record<string, number> = {};
   for (const q of queueCounts) queued[q.listId] = Number(q.count);
 
+  const membersByList: Record<string, string[]> = {};
+  for (const m of listMembers) (membersByList[m.listId] ??= []).push(m.subscriberId);
+
   return {
     apiKeyPrefix: user?.apiKeyPrefix ?? null,
+    profile: {
+      name: user?.name ?? "",
+      email: user?.email ?? "",
+      providers: providers.map((p) => p.provider),
+    },
     subscriptions: [...subByModule.values()],
     targets: targets.map((t) => ({ id: t.id, kind: t.kind, name: t.name, url: t.url })),
     artifacts: artifacts.map((a) => ({ id: a.id, kind: a.kind, name: a.name, promptText: a.promptText, keywords: a.keywords })),
@@ -503,12 +554,44 @@ export async function getAccountData(userId: string) {
       name: l.name,
       header: l.header,
       footer: l.footer,
-      emails: l.emails,
       sendPolicy: l.sendPolicy,
       threshold: l.threshold,
-      frequency: l.frequency,
+      weekday: l.weekday,
+      monthDay: l.monthDay,
+      audience: l.audience,
+      templateId: l.templateId,
+      subscriberIds: membersByList[l.id] ?? [],
       queued: queued[l.id] ?? 0,
+      lastSentAt: fmtDate(l.lastSentAt),
     })),
+    subscribers: subscriberRows.map((s) => ({
+      id: s.id,
+      email: s.email,
+      name: s.name,
+      status: s.status,
+      fields: (s.fields ?? {}) as Record<string, string>,
+      createdAt: fmtDate(s.createdAt),
+    })),
+    templates: templates.map((t) => ({
+      id: t.id,
+      name: t.name,
+      html: t.html,
+      isDefault: t.userId === null,
+    })),
+    mergeFields: fieldRows.map((f) => ({ key: f.key, label: f.label, value: f.value })),
+    sender: {
+      provider: sender?.provider ?? "default",
+      fromEmail: sender?.fromEmail ?? "",
+      fromName: sender?.fromName ?? "",
+      // Secrets are never sent to the browser; the UI only needs to know
+      // whether one is already on file.
+      hasSendgridKey: Boolean(sender?.sendgridKey),
+      hasSmtpPass: Boolean(sender?.smtpPass),
+      smtpHost: sender?.smtpHost ?? "",
+      smtpPort: sender?.smtpPort ?? 587,
+      smtpUser: sender?.smtpUser ?? "",
+      smtpSecure: sender?.smtpSecure ?? true,
+    },
   };
 }
 

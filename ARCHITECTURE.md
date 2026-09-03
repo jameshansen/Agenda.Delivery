@@ -19,6 +19,7 @@ container; the pieces talk over one docker network.
              │            │ agent containers (Python+Gunic.) │
              │            │ spider scraper checking          │
              │            │ categorization summary keyword   │
+             │            │ escalation                       │
              │            └───────────────┬─────────────────┘
              ▼                            ▼ writes results + events
         ┌──────────┐  ◀───────────  ┌──────────┐     ┌────────┐
@@ -74,6 +75,8 @@ client + API key handling, the Postgres pool, the Redis event bus, the
 | `bus.py` | `emit_event` → Postgres + Redis pub/sub |
 | `agent.py` | `BaseAgent`, `create_agent_app` |
 | `tools.py` | crawl / web-search / find-latest / verify / geo (SSRF-guarded) |
+| `notify.py` | subscriber alerts, automation rules, mailing-list sends |
+| `mailer.py` | outbound email: platform relay, SendGrid, or a user's own SMTP |
 | `textutil.py` | agenda end-of-meeting detection |
 
 ## Flows (`orchestrator/flows.py`)
@@ -82,6 +85,9 @@ client + API key handling, the Postgres pool, the Redis event bus, the
   `summary` + `keyword` + `categorization` in parallel.
 - **spider** — `spider` discovers/creates a module → orchestrator hands it to
   `scraper_create` → first pipeline run.
+- **escalation** — on its own schedule (15m), sweeps failed runs, output that
+  reads like a coding error, `site_error` rows written by the UI, and modules
+  stuck broken; emails anything new to `ADMIN_EMAIL`.
 
 ## Adding an agent
 

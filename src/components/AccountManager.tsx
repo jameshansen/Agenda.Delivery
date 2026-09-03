@@ -9,9 +9,8 @@ import {
   deleteArtifact,
   createRule,
   deleteRule,
-  saveMailingList,
-  deleteMailingList,
 } from "@/app/actions";
+import { Card, Dialog, inputCls, labelCls } from "@/components/account-ui";
 
 type Sub = { moduleId: string; slug: string; name: string; region: string; channel: string };
 type Target = { id: string; kind: string; name: string; url: string };
@@ -26,27 +25,15 @@ type Rule = {
   targetId: string | null;
   listId: string | null;
 };
-type MList = {
-  id: string;
-  name: string;
-  header: string;
-  footer: string;
-  emails: string;
-  sendPolicy: string;
-  threshold: number;
-  frequency: string;
-  queued: number;
-};
+/** Only what the actions flowchart needs — the full shape lives in
+ * MailingListManager, which owns the Mailing Lists tab. */
+type MList = { id: string; name: string };
 
 const CONTENT_LABEL: Record<string, string> = {
   summary: "AI summary",
   link: "Agenda link",
   full_text: "Full agenda text",
 };
-
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-xl border border-black/10 bg-white/60 p-3 ${className}`}>{children}</div>;
-}
 
 export default function AccountManager({
   subscriptions,
@@ -67,7 +54,6 @@ export default function AccountManager({
   const [ruleOpen, setRuleOpen] = useState(false);
   const [artifactOpen, setArtifactOpen] = useState(false);
   const [expandedArtifact, setExpandedArtifact] = useState<string | null>(null);
-  const [listEdit, setListEdit] = useState<MList | "new" | null>(null);
 
   const moduleName = (id: string) => subscriptions.find((s) => s.moduleId === id)?.name ?? "Unknown";
 
@@ -235,51 +221,6 @@ export default function AccountManager({
         </section>
       </div>
 
-      {/* Mailing lists */}
-      <section>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-xl">Mailing lists</h2>
-            <p className="mt-1 text-sm text-ink-soft">
-              Queue updates from your actions and send them as a digest, on a threshold or a schedule.
-            </p>
-          </div>
-          <button
-            onClick={() => setListEdit("new")}
-            className="shrink-0 rounded-lg bg-green px-3 py-1.5 text-sm text-paper hover:opacity-90"
-          >
-            <i className="fa-solid fa-plus mr-1" /> New list
-          </button>
-        </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {mailingLists.map((l) => (
-            <div key={l.id} className="rounded-2xl border border-black/10 bg-white/50 p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-semibold">{l.name}</div>
-                  <div className="mt-0.5 text-xs text-ink-soft">
-                    {l.emails.split(/[\n,]+/).filter((e) => e.trim()).length} recipients ·{" "}
-                    {l.sendPolicy === "threshold" ? `sends at ${l.threshold} queued` : `sends ${l.frequency}`}
-                  </div>
-                </div>
-                <span className="rounded-full bg-rust/10 px-2 py-0.5 text-xs text-rust">{l.queued} queued</span>
-              </div>
-              <div className="mt-3 flex gap-2 text-sm">
-                <button onClick={() => setListEdit(l)} className="rounded-lg border border-black/15 px-2.5 py-1 hover:border-green hover:text-green">
-                  Edit
-                </button>
-                <button onClick={() => run(() => deleteMailingList({ id: l.id }))} className="rounded-lg border border-black/15 px-2.5 py-1 hover:border-rose-500 hover:text-rose-600">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-          {mailingLists.length === 0 && (
-            <p className="text-sm text-ink-soft">No mailing lists yet.</p>
-          )}
-        </div>
-      </section>
-
       {artifactOpen && (
         <ArtifactDialog
           pending={pending}
@@ -310,40 +251,11 @@ export default function AccountManager({
         />
       )}
 
-      {listEdit && (
-        <MailingListDialog
-          pending={pending}
-          list={listEdit === "new" ? null : listEdit}
-          onClose={() => setListEdit(null)}
-          onSave={(input) => run(async () => {
-            const res = await saveMailingList(input);
-            if (res.ok) setListEdit(null);
-            return res;
-          })}
-        />
-      )}
     </div>
   );
 }
 
 /* ---- Dialogs ---- */
-
-function Dialog({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-paper p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg">{title}</h3>
-          <button onClick={onClose} className="text-ink-soft hover:text-ink"><i className="fa-solid fa-xmark" /></button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-const inputCls = "w-full rounded-lg border border-black/15 bg-white/70 px-3 py-2 text-sm outline-none focus:border-green";
-const labelCls = "block text-xs font-medium text-ink-soft mb-1";
 
 function ArtifactDialog({ pending, onClose, onSave }: {
   pending: boolean;
@@ -549,74 +461,6 @@ function RuleDialog({
           className="w-full rounded-lg bg-green py-2 text-sm text-paper hover:opacity-90 disabled:opacity-50"
         >
           Create action
-        </button>
-      </div>
-    </Dialog>
-  );
-}
-
-function MailingListDialog({ pending, list, onClose, onSave }: {
-  pending: boolean;
-  list: MList | null;
-  onClose: () => void;
-  onSave: (i: {
-    id?: string; name: string; header: string; footer: string; emails: string;
-    sendPolicy: "threshold" | "schedule"; threshold: number; frequency: "daily" | "weekly";
-  }) => void;
-}) {
-  const [name, setName] = useState(list?.name ?? "");
-  const [header, setHeader] = useState(list?.header ?? "");
-  const [footer, setFooter] = useState(list?.footer ?? "");
-  const [emails, setEmails] = useState(list?.emails ?? "");
-  const [sendPolicy, setSendPolicy] = useState<"threshold" | "schedule">((list?.sendPolicy as "threshold" | "schedule") ?? "threshold");
-  const [threshold, setThreshold] = useState(list?.threshold ?? 5);
-  const [frequency, setFrequency] = useState<"daily" | "weekly">((list?.frequency as "daily" | "weekly") ?? "weekly");
-  return (
-    <Dialog title={list ? "Edit mailing list" : "New mailing list"} onClose={onClose}>
-      <div className="space-y-3">
-        <div>
-          <label className={labelCls}>Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Neighbourhood watch digest" />
-        </div>
-        <div>
-          <label className={labelCls}>Header</label>
-          <textarea value={header} onChange={(e) => setHeader(e.target.value)} rows={2} className={inputCls} placeholder="Intro shown at the top of every send" />
-        </div>
-        <div>
-          <label className={labelCls}>Footer</label>
-          <textarea value={footer} onChange={(e) => setFooter(e.target.value)} rows={2} className={inputCls} placeholder="Unsubscribe note, signature, etc." />
-        </div>
-        <div>
-          <label className={labelCls}>Recipient emails (one per line or comma separated)</label>
-          <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={3} className={inputCls} placeholder="a@example.com, b@example.com" />
-        </div>
-        <div>
-          <label className={labelCls}>Send</label>
-          <select value={sendPolicy} onChange={(e) => setSendPolicy(e.target.value as typeof sendPolicy)} className={inputCls}>
-            <option value="threshold">When the queue reaches a threshold</option>
-            <option value="schedule">On a schedule</option>
-          </select>
-        </div>
-        {sendPolicy === "threshold" ? (
-          <div>
-            <label className={labelCls}>Threshold (queued items)</label>
-            <input type="number" min={1} value={threshold} onChange={(e) => setThreshold(parseInt(e.target.value) || 1)} className={inputCls} />
-          </div>
-        ) : (
-          <div>
-            <label className={labelCls}>Frequency</label>
-            <select value={frequency} onChange={(e) => setFrequency(e.target.value as typeof frequency)} className={inputCls}>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-            </select>
-          </div>
-        )}
-        <button
-          disabled={pending}
-          onClick={() => onSave({ id: list?.id, name, header, footer, emails, sendPolicy, threshold, frequency })}
-          className="w-full rounded-lg bg-green py-2 text-sm text-paper hover:opacity-90 disabled:opacity-50"
-        >
-          {list ? "Save changes" : "Create list"}
         </button>
       </div>
     </Dialog>

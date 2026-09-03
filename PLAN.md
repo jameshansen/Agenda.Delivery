@@ -13,7 +13,7 @@ _Last updated: 2026-08-07_
 | **Web UI** | ✅ | Landing, module detail, map, spider, agents, account, login, search |
 | **Backend** | ✅ | Postgres + Drizzle, Auth.js Google OAuth, server actions, subscriptions |
 | **Agent system** | ✅ | 7 agents, tool registry, SSE event streaming, live UI |
-| **LLM** | ✅ | Ollama cloud (glm-5.2 reasoning, gemma4 summaries) + dev mock |
+| **LLM** | ✅ | Ollama cloud (glm-5.3 reasoning, gemma4 summaries) + dev mock |
 | **Self-healing scraper** | ✅ | Detects 404, web-searches, finds correct agenda page autonomously |
 | **Real agenda extraction** | ✅ | `agenda.find_latest` finds latest meeting, downloads PDF, extracts text |
 | **Summary termination** | ✅ | Summary/Keyword agents detect end-of-meeting before summarizing |

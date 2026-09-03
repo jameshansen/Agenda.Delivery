@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY base/agenda_shared ./agenda_shared
 # The specific agent's app.py + agent_impl.py.
 COPY ${AGENT}/ ./
+# Logic self-check: `docker compose exec escalation python selfcheck.py`.
+COPY selfcheck.py ./
 
 EXPOSE 8000
 

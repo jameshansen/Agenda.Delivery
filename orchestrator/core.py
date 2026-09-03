@@ -21,6 +21,7 @@ DISPLAY_NAMES = {
     "categorization": "Categorization Agent",
     "summary": "Summary Agent",
     "keyword": "Keyword Agent",
+    "escalation": "Escalation Agent",
 }
 
 # agent_type -> base URL of its container. scraper_create/repair share one
@@ -33,6 +34,7 @@ SERVICES = {
     "categorization": os.environ.get("CATEGORIZATION_URL", "http://categorization:8000"),
     "summary": os.environ.get("SUMMARY_URL", "http://summary:8000"),
     "keyword": os.environ.get("KEYWORD_URL", "http://keyword:8000"),
+    "escalation": os.environ.get("ESCALATION_URL", "http://escalation:8000"),
 }
 
 MAX_RETRIES = int(os.environ.get("AGENT_MAX_RETRIES", "2"))
