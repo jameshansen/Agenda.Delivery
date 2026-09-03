@@ -24,7 +24,7 @@ import { createSession } from "@/lib/session";
 import { rateLimit } from "@/lib/rate-limit";
 import { SMS_ENABLED } from "@/lib/features";
 import { revalidatePath } from "next/cache";
-import { inArray, isNull, or as sqlOr, sql } from "drizzle-orm";
+import { inArray, isNull, or as sqlOr, sql, ilike, desc, asc } from "drizzle-orm";
 import { chat, extractHtml, llmConfigured } from "@/lib/llm";
 import { sendHtmlMail, type SenderConfig } from "@/lib/email";
 import {
@@ -793,6 +793,102 @@ export async function confirmEmailChange(input: { email: string; code: string })
     return { ok: false, error: "That code is incorrect or expired." };
   }
   await db.update(users).set({ email, emailVerified: new Date() }).where(eq(users.id, userId));
+  revalidatePath("/account");
+  return { ok: true };
+}
+
+/* ---- Subscriptions, managed from the account screen ---- */
+
+/**
+ * Search the agenda catalogue for the "Add subscription" dialog. An empty
+ * query returns the most-followed sources, so the dialog has something useful
+ * in it before anyone types.
+ */
+export async function searchModules(input: { query: string }) {
+  const userId = await requireUserId();
+  const q = input.query.trim();
+
+  const rows = await db
+    .select({
+      slug: modules.slug,
+      name: modules.name,
+      region: modules.region,
+      followers: modules.followers,
+      health: modules.health,
+    })
+    .from(modules)
+    .where(
+      q
+        ? and(
+            eq(modules.isDemo, false),
+            sqlOr(ilike(modules.name, `%${q}%`), ilike(modules.region, `%${q}%`))!,
+          )
+        : eq(modules.isDemo, false),
+    )
+    .orderBy(desc(modules.followers), asc(modules.name))
+    .limit(25);
+
+  // Mark what they already follow so the dialog can show it instead of
+  // offering a subscribe that would be a no-op.
+  const mine = await db
+    .select({ slug: modules.slug })
+    .from(subscriptions)
+    .innerJoin(modules, eq(subscriptions.moduleId, modules.id))
+    .where(eq(subscriptions.userId, userId));
+  const following = new Set(mine.map((m) => m.slug));
+
+  return {
+    ok: true,
+    results: rows.map((r) => ({ ...r, subscribed: following.has(r.slug) })),
+  };
+}
+
+/** Follow a source from the account screen. Deliberately does NOT create an
+ * action: the point of the flowchart is that you choose what happens next. */
+export async function addSubscription(input: { slug: string }) {
+  const userId = await requireUserId();
+
+  // Read the contact from the row rather than the session: an account created
+  // by phone OTP has no email on the session object at all.
+  const [me] = await db
+    .select({ email: users.email, phone: users.phone })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const contact = me?.email ?? me?.phone ?? null;
+  if (!contact) return { ok: false, error: "Your account has no email address." };
+
+  const [m] = await db.select({ id: modules.id }).from(modules).where(eq(modules.slug, input.slug)).limit(1);
+  if (!m) return { ok: false, error: "That source no longer exists." };
+
+  const [existing] = await db
+    .select({ id: subscriptions.id })
+    .from(subscriptions)
+    .where(and(eq(subscriptions.moduleId, m.id), eq(subscriptions.userId, userId)))
+    .limit(1);
+  if (!existing) {
+    await db.insert(subscriptions).values({
+      moduleId: m.id,
+      channel: me?.email ? "email" : "text",
+      contact,
+      userId,
+    });
+  }
+
+  revalidatePath("/account");
+  return { ok: true };
+}
+
+/** Stop following a source. Its actions go too — a rule with no subscription
+ * behind it would never fire again, and leaving it would be a puzzle. */
+export async function removeSubscription(input: { slug: string }) {
+  const userId = await requireUserId();
+  const [m] = await db.select({ id: modules.id }).from(modules).where(eq(modules.slug, input.slug)).limit(1);
+  if (!m) return { ok: false, error: "That source no longer exists." };
+
+  await db.delete(automationRules).where(and(eq(automationRules.userId, userId), eq(automationRules.moduleId, m.id)));
+  await db.delete(subscriptions).where(and(eq(subscriptions.userId, userId), eq(subscriptions.moduleId, m.id)));
+
   revalidatePath("/account");
   return { ok: true };
 }

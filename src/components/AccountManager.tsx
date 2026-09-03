@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   createTarget,
@@ -9,8 +9,11 @@ import {
   deleteArtifact,
   createRule,
   deleteRule,
+  searchModules,
+  addSubscription,
+  removeSubscription,
 } from "@/app/actions";
-import { Card, Dialog, inputCls, labelCls } from "@/components/account-ui";
+import { Card, Dialog, inputCls, labelCls, btnCls, primaryBtnCls } from "@/components/account-ui";
 
 type Sub = { moduleId: string; slug: string; name: string; region: string; channel: string };
 type Target = { id: string; kind: string; name: string; url: string };
@@ -58,6 +61,7 @@ export default function AccountManager({
   const [ruleOpen, setRuleOpen] = useState(false);
   const [artifactOpen, setArtifactOpen] = useState(false);
   const [expandedArtifact, setExpandedArtifact] = useState<string | null>(null);
+  const [subOpen, setSubOpen] = useState(false);
 
   const moduleName = (id: string) => subscriptions.find((s) => s.moduleId === id)?.name ?? "Unknown";
 
@@ -85,18 +89,33 @@ export default function AccountManager({
             <h2 className="text-lg">Subscriptions</h2>
           </div>
           <p className="mb-3 text-xs text-ink-soft">The agendas you follow. Each can trigger an action.</p>
-          {subscriptions.length === 0 ? (
-            <Card className="text-sm text-ink-soft">No subscriptions yet.</Card>
-          ) : (
-            <div className="space-y-2">
-              {subscriptions.map((s) => (
-                <Card key={s.moduleId}>
+          <div className="space-y-2">
+            {subscriptions.length === 0 && (
+              <Card className="text-sm text-ink-soft">No subscriptions yet.</Card>
+            )}
+            {subscriptions.map((s) => (
+              <Card key={s.moduleId} className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
                   <div className="font-medium">{s.name}</div>
                   <div className="text-xs text-ink-soft">{s.region}</div>
-                </Card>
-              ))}
-            </div>
-          )}
+                </div>
+                <button
+                  onClick={() => run(() => removeSubscription({ slug: s.slug }))}
+                  className="shrink-0 text-xs text-ink-soft hover:text-rose-600"
+                  title="Unfollow. This also removes its actions."
+                  aria-label={`Unfollow ${s.name}`}
+                >
+                  <i className="fa-solid fa-trash" />
+                </button>
+              </Card>
+            ))}
+            <button
+              onClick={() => { setErr(null); setSubOpen(true); }}
+              className="w-full rounded-xl border border-dashed border-black/20 py-2 text-sm text-ink-soft hover:border-green hover:text-green"
+            >
+              <i className="fa-solid fa-plus mr-1" /> Add subscription
+            </button>
+          </div>
         </section>
 
         {/* Column 2: Artifacts */}
@@ -225,6 +244,13 @@ export default function AccountManager({
         </section>
       </div>
 
+      {subOpen && (
+        <SubscriptionDialog
+          onClose={() => setSubOpen(false)}
+          onSubscribed={() => router.refresh()}
+        />
+      )}
+
       {artifactOpen && (
         <ArtifactDialog
           pending={pending}
@@ -261,6 +287,121 @@ export default function AccountManager({
 }
 
 /* ---- Dialogs ---- */
+
+/** Search the catalogue and follow a source without leaving the account
+ * screen. Following only adds it to column 1: what happens on a new agenda
+ * is still an action the user builds in column 3. */
+function SubscriptionDialog({
+  onClose, onSubscribed,
+}: {
+  onClose: () => void;
+  onSubscribed: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<
+    { slug: string; name: string; region: string; followers: number; health: string; subscribed: boolean }[]
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Debounced so typing a council name is one query, not one per keystroke.
+  useEffect(() => {
+    let cancelled = false;
+    // setLoading lives inside the timer, not the effect body: setting state
+    // synchronously on every keystroke would cascade a render before the
+    // debounce had a chance to coalesce them.
+    const t = setTimeout(async () => {
+      if (!cancelled) setLoading(true);
+      try {
+        const res = await searchModules({ query });
+        if (!cancelled) setResults(res.results ?? []);
+      } catch {
+        if (!cancelled) setError("Could not search just now.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [query]);
+
+  async function follow(slug: string) {
+    setBusy(slug);
+    setError(null);
+    try {
+      const res = await addSubscription({ slug });
+      if (res.ok) {
+        setResults((prev) => prev.map((r) => (r.slug === slug ? { ...r, subscribed: true } : r)));
+        onSubscribed();
+      } else {
+        setError(res.error ?? "Could not subscribe.");
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Dialog title="Add a subscription" onClose={onClose}>
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className={inputCls}
+        placeholder="Search by council or region..."
+      />
+      {error && <p className="mt-2 text-xs text-rose-700">{error}</p>}
+
+      <div className="mt-3 max-h-80 space-y-1.5 overflow-y-auto">
+        {loading && results.length === 0 && (
+          <p className="px-1 py-3 text-xs text-ink-soft">
+            <i className="fa-solid fa-circle-notch fa-spin mr-1.5" />Searching...
+          </p>
+        )}
+        {!loading && results.length === 0 && (
+          <p className="px-1 py-3 text-xs text-ink-soft">
+            Nothing matches that. Sources are added by the Spider Agent as it
+            discovers them.
+          </p>
+        )}
+        {results.map((r) => (
+          <div key={r.slug} className="flex items-center justify-between gap-2 rounded-lg border border-black/10 bg-white/60 px-3 py-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">{r.name}</div>
+              <div className="truncate text-xs text-ink-soft">
+                {r.region}
+                {r.health !== "healthy" && (
+                  <span className="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5 text-[10px] text-amber-800">
+                    {r.health}
+                  </span>
+                )}
+              </div>
+            </div>
+            {r.subscribed ? (
+              <span className="shrink-0 text-xs text-green-dark">
+                <i className="fa-solid fa-check mr-1" />following
+              </span>
+            ) : (
+              <button
+                disabled={busy === r.slug}
+                onClick={() => follow(r.slug)}
+                className={`shrink-0 ${primaryBtnCls}`}
+              >
+                {busy === r.slug ? "..." : "Follow"}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-3 text-xs text-ink-soft">
+        Following adds it to Subscriptions. To actually receive something, add an
+        action for it in step 3.
+      </p>
+      <button onClick={onClose} className={`mt-3 w-full ${btnCls}`}>Done</button>
+    </Dialog>
+  );
+}
 
 function ArtifactDialog({ pending, onClose, onSave }: {
   pending: boolean;
