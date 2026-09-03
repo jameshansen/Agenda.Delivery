@@ -520,3 +520,9 @@ ON CONFLICT DO NOTHING;
 -- A list that had an explicit address blob was never an "everyone" list.
 UPDATE mailing_list SET audience = 'selected'
  WHERE audience = 'all' AND coalesce(trim(emails), '') <> '';
+
+-- Emptying `emails` is what makes the three statements above one-shot. This
+-- file is re-run on every deploy; without it, a user who later switches a
+-- migrated list to "all subscribers" would have that choice silently
+-- reverted the next time we deploy.
+UPDATE mailing_list SET emails = '' WHERE coalesce(trim(emails), '') <> '';
