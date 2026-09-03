@@ -37,6 +37,10 @@ DEFAULT_WINDOW_HOURS = 24
 # otherwise hand us hundreds of near-identical snippets in one tick.
 MAX_LLM_TRIAGE = 6
 
+# Most issues written into one admin email. The first run after a deploy sees
+# every standing problem at once; the overflow is recorded, just not mailed.
+MAX_EMAIL_ITEMS = 25
+
 # Text that has no business appearing in a council summary or an agent's
 # user-facing response. Deliberately narrow -- these must not fire on an
 # agenda that merely discusses, say, a "type error" in a bylaw.
@@ -342,10 +346,18 @@ class EscalationAgent(BaseAgent):
             f"The Escalation Agent found {n} new issue{'s' if n != 1 else ''} "
             f"in the last {hours} hours.\n"
         ]
-        for f in sorted(fresh, key=lambda f: -SEVERITY_RANK.get(f["severity"], 1)):
+        # Worst first, and capped: the first run after a deploy sees every
+        # standing problem at once, and a hundred-screen email gets ignored
+        # rather than read. The rest are still recorded in `escalation`.
+        ranked = sorted(fresh, key=lambda f: -SEVERITY_RANK.get(f["severity"], 1))
+        for f in ranked[:MAX_EMAIL_ITEMS]:
             parts.append(
                 f"\n[{f['severity'].upper()}] {f['subject']}\n"
                 f"{'-' * 60}\n{f['body']}\n"
+            )
+        if n > MAX_EMAIL_ITEMS:
+            parts.append(
+                f"\n… and {n - MAX_EMAIL_ITEMS} more, recorded in the escalation table.\n"
             )
         parts.append(f"\n\nAgents: {BASE_URL}/agents")
         ok = mailer.send_plain(ADMIN_EMAIL, subject, "\n".join(parts))

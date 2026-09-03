@@ -179,7 +179,12 @@ def _month_target_day(policy_day: str, today: date) -> int:
 
 
 def _schedule_due(ml: dict, pending_count: int) -> bool:
-    """Has this list hit its threshold, or is today its send day?"""
+    """Has this list hit its threshold, or is today its send day?
+
+    Days are UTC, so "weekly on Monday" means UTC Monday -- which begins
+    Sunday afternoon on the west coast. Give mailing_list a timezone column
+    and convert here if that ever matters to someone.
+    """
     policy = ml.get("send_policy") or "threshold"
     if policy == "threshold":
         return pending_count >= (ml.get("threshold") or 1)
