@@ -44,6 +44,7 @@ export default function AccountTabs({ data }: { data: AccountData }) {
               to deliver it: a script, a Discord channel, or a mailing list.
             </p>
             <AccountManager
+              onGoToMailingLists={() => setTab("mailing")}
               subscriptions={data.subscriptions}
               targets={data.targets}
               artifacts={data.artifacts}

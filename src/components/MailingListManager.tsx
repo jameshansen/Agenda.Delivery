@@ -24,7 +24,12 @@ import {
   renderTemplate,
   toFieldKey,
 } from "@/lib/mail-fields";
-import { WEEKDAYS, MONTH_DAYS, describeSchedule } from "@/lib/mailing";
+import {
+  WEEKDAYS,
+  MONTH_DAYS,
+  describeSchedule,
+  DEFAULT_SENDER_SUBSCRIBER_CAP,
+} from "@/lib/mailing";
 import HtmlEditor from "@/components/HtmlEditor";
 import {
   Card,
@@ -158,6 +163,7 @@ export default function MailingListManager({
           <SubscribersSection
             subscribers={subscribers}
             mergeFields={mergeFields}
+            capped={sender.provider === "default"}
             pending={pending}
             run={run}
             onNote={setNote}
@@ -509,10 +515,12 @@ function SubscriberPicker({
 /* ══════════════ Subscribers ══════════════ */
 
 function SubscribersSection({
-  subscribers, mergeFields, pending, run, onNote,
+  subscribers, mergeFields, capped, pending, run, onNote,
 }: {
   subscribers: Subscriber[];
   mergeFields: MergeFieldRow[];
+  /** True while sending through the shared relay, which is capped. */
+  capped: boolean;
   pending: boolean;
   run: RunFn;
   onNote: (s: string | null) => void;
@@ -522,6 +530,7 @@ function SubscribersSection({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Subscriber | null>(null);
+  const full = capped && subscribers.length >= DEFAULT_SENDER_SUBSCRIBER_CAP;
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -560,11 +569,20 @@ function SubscribersSection({
         title="Subscribers"
         hint="One address book for your whole account. Any mailing list can send to all of them, or to a selection."
         action={
-          <button onClick={() => setAddOpen(true)} className={primaryBtnCls}>
+          <button onClick={() => setAddOpen(true)} disabled={full} className={primaryBtnCls}>
             <i className="fa-solid fa-user-plus mr-1" /> Add subscribers
           </button>
         }
       />
+
+      {capped && (
+        <p className={`mt-3 rounded-lg px-3 py-2 text-xs ${full ? "bg-amber-500/10 text-amber-800" : "bg-row/60 text-ink-soft"}`}>
+          <i className={`fa-solid ${full ? "fa-triangle-exclamation" : "fa-circle-info"} mr-1.5`} />
+          {subscribers.length} of {DEFAULT_SENDER_SUBSCRIBER_CAP} subscribers used on the
+          built-in sender. Connect SendGrid or your own SMTP server in Sending Settings
+          to remove the limit.
+        </p>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <input
@@ -805,6 +823,7 @@ function TemplatesSection({
   onError: (s: string | null) => void;
 }) {
   const [editing, setEditing] = useState<{ id?: string; name: string; html: string } | null>(null);
+  const [previewing, setPreviewing] = useState<Template | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
 
   const fieldChips = [
@@ -851,13 +870,29 @@ function TemplatesSection({
                 )}
               </div>
             </div>
-            <iframe
-              title={`${t.name} preview`}
-              sandbox=""
-              srcDoc={renderTemplate(t.html, previewValues(fieldValues))}
-              className="pointer-events-none mt-2 h-40 w-full rounded-lg border border-black/10 bg-white"
-            />
+            <button
+              type="button"
+              onClick={() => setPreviewing(t)}
+              title="Open full preview"
+              className="group relative mt-2 block w-full overflow-hidden rounded-lg border border-black/10 bg-white"
+            >
+              <iframe
+                title={`${t.name} preview`}
+                sandbox=""
+                srcDoc={renderTemplate(t.html, previewValues(fieldValues))}
+                scrolling="no"
+                // A 160px-tall thumbnail can't be scrolled usefully, so it
+                // stays inert and the click opens the scrollable modal.
+                className="pointer-events-none h-40 w-full"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-ink/0 text-sm text-transparent transition-colors group-hover:bg-ink/40 group-hover:text-paper">
+                <i className="fa-solid fa-expand mr-1.5" /> View
+              </span>
+            </button>
             <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={() => setPreviewing(t)} className={btnCls}>
+                View
+              </button>
               {t.isDefault ? (
                 <button
                   onClick={() => setEditing({ name: `${t.name} (copy)`, html: t.html })}
@@ -903,6 +938,26 @@ function TemplatesSection({
         />
       )}
 
+      {previewing && (
+        <TemplatePreviewDialog
+          template={previewing}
+          fieldValues={fieldValues}
+          onClose={() => setPreviewing(null)}
+          onDuplicate={() => {
+            setEditing({ name: `${previewing.name} (copy)`, html: previewing.html });
+            setPreviewing(null);
+          }}
+          onEdit={
+            previewing.isDefault
+              ? undefined
+              : () => {
+                  setEditing({ id: previewing.id, name: previewing.name, html: previewing.html });
+                  setPreviewing(null);
+                }
+          }
+        />
+      )}
+
       {aiOpen && (
         <AiTemplateDialog
           onClose={() => setAiOpen(false)}
@@ -914,6 +969,74 @@ function TemplatesSection({
         />
       )}
     </section>
+  );
+}
+
+/** Full-size, scrollable preview. The built-in default can only be looked at
+ * and copied -- it is shared by every account, so nobody edits it in place. */
+function TemplatePreviewDialog({
+  template, fieldValues, onClose, onDuplicate, onEdit,
+}: {
+  template: Template;
+  fieldValues: Record<string, string>;
+  onClose: () => void;
+  onDuplicate: () => void;
+  onEdit?: () => void;
+}) {
+  const [showSource, setShowSource] = useState(false);
+  const rendered = renderTemplate(template.html, previewValues(fieldValues));
+
+  return (
+    <Dialog title={template.name} onClose={onClose} wide>
+      {template.isDefault && (
+        <p className="mb-3 rounded-lg bg-row/60 px-3 py-2 text-xs text-ink-soft">
+          This is the built-in template every account starts with. It is read-only —
+          duplicate it to make a version you can change.
+        </p>
+      )}
+
+      <div className="mb-2 flex items-center gap-1">
+        <button
+          onClick={() => setShowSource(false)}
+          className={`rounded px-2 py-1 text-xs ${!showSource ? "bg-green text-paper" : "text-ink-soft hover:text-ink"}`}
+        >
+          Preview
+        </button>
+        <button
+          onClick={() => setShowSource(true)}
+          className={`rounded px-2 py-1 text-xs ${showSource ? "bg-green text-paper" : "text-ink-soft hover:text-ink"}`}
+        >
+          HTML
+        </button>
+      </div>
+
+      {showSource ? (
+        <pre className="h-[60vh] overflow-auto rounded-lg border border-black/10 bg-white p-4 font-mono text-xs text-black">
+          {template.html}
+        </pre>
+      ) : (
+        <iframe
+          title={`${template.name} full preview`}
+          sandbox=""
+          srcDoc={rendered}
+          className="h-[60vh] w-full rounded-lg border border-black/10 bg-white"
+        />
+      )}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {onEdit && (
+          <button onClick={onEdit} className={primaryBtnCls}>
+            Edit this template
+          </button>
+        )}
+        <button onClick={onDuplicate} className={btnCls}>
+          Duplicate to edit
+        </button>
+        <button onClick={onClose} className={`${btnCls} ml-auto`}>
+          Close
+        </button>
+      </div>
+    </Dialog>
   );
 }
 

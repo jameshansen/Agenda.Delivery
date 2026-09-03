@@ -328,7 +328,10 @@ def _maybe_send_list(ml: dict) -> None:
             "unsubscribe_url": f"{settings.BASE_URL}/unsubscribe/{sub['id']}",
         }
         body = ensure_unsubscribe(mailer.render(template, values), values["unsubscribe_url"])
-        if mailer.send(cfg, sub["email"], subject, body):
+        # The header URI must accept a bare POST (RFC 8058), which the
+        # human-facing page cannot -- hence the separate API route.
+        one_click = f"{settings.BASE_URL}/api/unsubscribe/{sub['id']}"
+        if mailer.send(cfg, sub["email"], subject, body, one_click_url=one_click):
             sent += 1
 
     if sent == 0:

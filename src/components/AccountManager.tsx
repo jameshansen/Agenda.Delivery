@@ -41,7 +41,11 @@ export default function AccountManager({
   artifacts,
   rules,
   mailingLists,
+  onGoToMailingLists,
 }: {
+  /** Jump to the Mailing Lists tab — a list has to exist before an action
+   * can queue into one, and the place to make one is over there. */
+  onGoToMailingLists: () => void;
   subscriptions: Sub[];
   targets: Target[];
   artifacts: Artifact[];
@@ -236,6 +240,7 @@ export default function AccountManager({
       {ruleOpen && (
         <RuleDialog
           pending={pending}
+          onGoToMailingLists={onGoToMailingLists}
           subscriptions={subscriptions}
           artifacts={artifacts}
           targets={targets}
@@ -304,9 +309,10 @@ function ArtifactDialog({ pending, onClose, onSave }: {
 }
 
 function RuleDialog({
-  pending, subscriptions, artifacts, targets, mailingLists, onClose, onSave, onCreateTarget, onDeleteTarget,
+  pending, subscriptions, artifacts, targets, mailingLists, onClose, onSave, onCreateTarget, onDeleteTarget, onGoToMailingLists,
 }: {
   pending: boolean;
+  onGoToMailingLists: () => void;
   subscriptions: Sub[];
   artifacts: Artifact[];
   targets: Target[];
@@ -412,7 +418,15 @@ function RuleDialog({
             <div className="mt-2">
               <label className={labelCls}>Mailing list</label>
               {mailingLists.length === 0 ? (
-                <p className="text-xs text-ink-soft">Create a mailing list below first.</p>
+                <p className="text-xs text-ink-soft">
+                  <button
+                    type="button"
+                    onClick={onGoToMailingLists}
+                    className="text-green underline underline-offset-2 hover:text-green-dark"
+                  >
+                    Create a mailing list first
+                  </button>
+                </p>
               ) : (
                 <select value={listId} onChange={(e) => setListId(e.target.value)} className={inputCls}>
                   {mailingLists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}

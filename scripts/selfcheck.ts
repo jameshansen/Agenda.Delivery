@@ -58,6 +58,19 @@ function checkRendering() {
   }
 }
 
+function checkEmptyImageStripping() {
+  // An account with no logo must not ship a broken-image icon to every inbox.
+  const withLogo = '<body><img src="{{logo_url}}" alt="x" />{{content}}</body>';
+  assert.ok(!renderTemplate(withLogo, { logo_url: "", content: "hi" }).includes("<img"));
+  // A real logo survives untouched.
+  const out = renderTemplate(withLogo, { logo_url: "https://x.test/l.png", content: "hi" });
+  assert.ok(out.includes('src="https://x.test/l.png"'));
+  // Only the empty one goes when a template has both.
+  const two = '<img src="" /><img src="https://x.test/a.png" />{{content}}';
+  const both = renderTemplate(two, { content: "hi" });
+  assert.equal((both.match(/<img/g) ?? []).length, 1, both);
+}
+
 function checkRequiredFields() {
   // A template with no way out must be refused, however complete it looks.
   const noOptOut = "<html><body><h1>{{organization_name}}</h1>{{content}}</body></html>";
@@ -95,5 +108,6 @@ function checkSchedule() {
 checkParsing();
 checkRendering();
 checkRequiredFields();
+checkEmptyImageStripping();
 checkSchedule();
 console.log("selfcheck: all checks passed");

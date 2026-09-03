@@ -102,6 +102,29 @@ def check_unsubscribe_guarantee():
     assert url in ensure_unsubscribe(frag, url)
 
 
+def check_empty_image_stripping():
+    with_logo = '<body><img src="{{logo_url}}" alt="x" />{{content}}</body>'
+    assert "<img" not in mailer.render(with_logo, {"logo_url": "", "content": "hi"})
+    kept = mailer.render(with_logo, {"logo_url": "https://x.test/l.png", "content": "hi"})
+    assert 'src="https://x.test/l.png"' in kept
+    two = '<img src="" /><img src="https://x.test/a.png" />{{content}}'
+    assert mailer.render(two, {"content": "hi"}).count("<img") == 1
+
+
+def check_unsubscribe_headers():
+    url = "https://agenda.delivery/api/unsubscribe/abc"
+    h = mailer._unsubscribe_headers(url)
+    # The angle brackets and the One-Click post are both load-bearing: without
+    # either, Gmail treats it as a plain link and shows no native button.
+    assert h["List-Unsubscribe"] == f"<{url}>", h
+    assert h["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click", h
+    assert mailer._unsubscribe_headers(None) == {}
+
+    msg = mailer._build({"provider": "default"}, "a@b.test", "s", "<p>h</p>", "h", url)
+    assert msg["List-Unsubscribe"] == f"<{url}>"
+    assert msg["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+
+
 def check_render():
     out = mailer.render("<p>{{greeting}} {{ name }}</p>", {"greeting": "Hi", "name": "Sam"})
     assert out == "<p>Hi Sam</p>", out
@@ -116,5 +139,7 @@ if __name__ == "__main__":
     check_error_detection()
     check_schedule()
     check_unsubscribe_guarantee()
+    check_unsubscribe_headers()
+    check_empty_image_stripping()
     check_render()
     print("selfcheck: all checks passed")

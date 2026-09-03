@@ -61,10 +61,17 @@ export function toFieldKey(label: string): string {
     .slice(0, 40);
 }
 
+/** An <img> whose src resolved to nothing. A template that references
+ * {{logo_url}} on an account that never set one would otherwise render a
+ * broken-image icon in every inbox. */
+const EMPTY_IMG = /<img\b[^>]*\bsrc\s*=\s*(?:""|'')[^>]*\/?>/gi;
+
 /** Substitute {{key}} placeholders. Unknown keys collapse to empty, so a
  * half-filled template shows a gap rather than literal braces. */
 export function renderTemplate(html: string, values: Record<string, string>): string {
-  return html.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => values[key] ?? "");
+  return html
+    .replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => values[key] ?? "")
+    .replace(EMPTY_IMG, "");
 }
 
 /** Sample values for the template preview and test sends. */

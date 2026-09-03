@@ -5,6 +5,15 @@ import { EMAIL_RE } from "@/lib/contact";
 export type ParsedSubscriber = { email: string; name: string };
 
 /**
+ * Ceiling on the shared relay. Mail sent through the built-in sender goes out
+ * as update@agenda.delivery, on our IP and our domain reputation -- one
+ * account blasting thousands of recipients would land every other account's
+ * mail in spam. Connecting SendGrid or an own SMTP server moves that risk (and
+ * this limit) onto the sender, so those providers are uncapped.
+ */
+export const DEFAULT_SENDER_SUBSCRIBER_CAP = 100;
+
+/**
  * Parse a pasted block of subscribers. Accepts one per line or comma
  * separated, in any of:
  *   sam@example.com

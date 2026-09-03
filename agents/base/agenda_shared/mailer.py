@@ -32,11 +32,17 @@ BUILTIN_FIELD_KEYS = (
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
 
+# An <img> whose src resolved to nothing -- a template referencing
+# {{logo_url}} on an account that never set one. Left in place it renders a
+# broken-image icon in every inbox. Mirrors EMPTY_IMG in src/lib/mail-fields.ts.
+_EMPTY_IMG = re.compile(r"""<img\b[^>]*\bsrc\s*=\s*(?:""|'')[^>]*/?>""", re.I)
+
 
 def render(template_html: str, values: dict) -> str:
     """Substitute {{key}} placeholders. Unknown keys collapse to empty so a
     half-filled template degrades to a gap, never to literal braces."""
-    return _PLACEHOLDER.sub(lambda m: str(values.get(m.group(1), "") or ""), template_html)
+    filled = _PLACEHOLDER.sub(lambda m: str(values.get(m.group(1), "") or ""), template_html)
+    return _EMPTY_IMG.sub("", filled)
 
 
 def to_plain_text(html_str: str) -> str:
@@ -87,16 +93,22 @@ def from_header(cfg: dict) -> str:
 
 
 def send(cfg: dict, to: str, subject: str, html_body: str,
-         text_body: str | None = None) -> bool:
-    """Send one message with whichever provider `cfg` selects."""
+         text_body: str | None = None, one_click_url: str | None = None) -> bool:
+    """Send one message with whichever provider `cfg` selects.
+
+    `one_click_url` becomes the List-Unsubscribe header, which is what puts
+    the native Unsubscribe button next to the sender name in Gmail and
+    Outlook. Gmail requires it of bulk senders and weighs it for placement,
+    so a list send should always pass one.
+    """
     text_body = text_body or to_plain_text(html_body)
     provider = cfg.get("provider") or "default"
     try:
         if provider == "sendgrid":
-            return _send_sendgrid(cfg, to, subject, html_body, text_body)
+            return _send_sendgrid(cfg, to, subject, html_body, text_body, one_click_url)
         if provider == "smtp":
-            return _send_smtp(cfg, to, subject, html_body, text_body)
-        return _send_relay(cfg, to, subject, html_body, text_body)
+            return _send_smtp(cfg, to, subject, html_body, text_body, one_click_url)
+        return _send_relay(cfg, to, subject, html_body, text_body, one_click_url)
     except Exception as exc:
         print(f"[mailer] send to {to} via {provider} failed: {exc}")
         return False
@@ -121,33 +133,50 @@ def send_plain(to: str, subject: str, body: str) -> bool:
         return False
 
 
-def _build(cfg: dict, to: str, subject: str, html_body: str, text_body: str) -> EmailMessage:
+def _unsubscribe_headers(one_click_url: str | None) -> dict:
+    """RFC 8058. List-Unsubscribe-Post is the part that makes it one-click:
+    without it, clients treat the URI as a link to open rather than a POST
+    to fire, and Gmail will not show its own button."""
+    if not one_click_url:
+        return {}
+    return {
+        "List-Unsubscribe": f"<{one_click_url}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
+def _build(cfg: dict, to: str, subject: str, html_body: str, text_body: str,
+           one_click_url: str | None = None) -> EmailMessage:
     msg = EmailMessage()
     msg["From"] = from_header(cfg)
     msg["To"] = to
     msg["Subject"] = subject
+    for key, value in _unsubscribe_headers(one_click_url).items():
+        msg[key] = value
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
     return msg
 
 
-def _send_relay(cfg: dict, to: str, subject: str, html_body: str, text_body: str) -> bool:
+def _send_relay(cfg: dict, to: str, subject: str, html_body: str, text_body: str,
+                one_click_url: str | None = None) -> bool:
     if not settings.SMTP_HOST:
         print("[mailer] SMTP_HOST unset; skipping email leg")
         return False
-    msg = _build(cfg, to, subject, html_body, text_body)
+    msg = _build(cfg, to, subject, html_body, text_body, one_click_url)
     with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as s:
         s.send_message(msg)
     return True
 
 
-def _send_smtp(cfg: dict, to: str, subject: str, html_body: str, text_body: str) -> bool:
+def _send_smtp(cfg: dict, to: str, subject: str, html_body: str, text_body: str,
+               one_click_url: str | None = None) -> bool:
     host = cfg.get("smtp_host")
     if not host:
         print("[mailer] smtp provider selected but no host configured")
         return False
     port = int(cfg.get("smtp_port") or 587)
-    msg = _build(cfg, to, subject, html_body, text_body)
+    msg = _build(cfg, to, subject, html_body, text_body, one_click_url)
     # Port 465 is implicit TLS; everything else negotiates STARTTLS when the
     # account asked for a secure connection.
     if port == 465:
@@ -165,7 +194,8 @@ def _send_smtp(cfg: dict, to: str, subject: str, html_body: str, text_body: str)
     return True
 
 
-def _send_sendgrid(cfg: dict, to: str, subject: str, html_body: str, text_body: str) -> bool:
+def _send_sendgrid(cfg: dict, to: str, subject: str, html_body: str, text_body: str,
+                   one_click_url: str | None = None) -> bool:
     key = cfg.get("sendgrid_key")
     if not key:
         print("[mailer] sendgrid provider selected but no API key configured")
@@ -184,6 +214,7 @@ def _send_sendgrid(cfg: dict, to: str, subject: str, html_body: str, text_body: 
                 {"type": "text/plain", "value": text_body},
                 {"type": "text/html", "value": html_body},
             ],
+            **({"headers": _unsubscribe_headers(one_click_url)} if one_click_url else {}),
         },
         timeout=20,
     )

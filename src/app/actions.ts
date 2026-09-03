@@ -24,7 +24,7 @@ import { createSession } from "@/lib/session";
 import { rateLimit } from "@/lib/rate-limit";
 import { SMS_ENABLED } from "@/lib/features";
 import { revalidatePath } from "next/cache";
-import { inArray, isNull, or as sqlOr } from "drizzle-orm";
+import { inArray, isNull, or as sqlOr, sql } from "drizzle-orm";
 import { chat, extractHtml, llmConfigured } from "@/lib/llm";
 import { sendHtmlMail, type SenderConfig } from "@/lib/email";
 import {
@@ -34,7 +34,7 @@ import {
   renderTemplate,
   toFieldKey,
 } from "@/lib/mail-fields";
-import { parseSubscribers } from "@/lib/mailing";
+import { parseSubscribers, DEFAULT_SENDER_SUBSCRIBER_CAP } from "@/lib/mailing";
 import { EMAIL_RE } from "@/lib/contact";
 
 async function requireUserId(): Promise<string> {
@@ -402,6 +402,14 @@ export async function deleteMailingList(input: { id: string }) {
 
 /* ---- Subscribers (global to the account, shared by every list) ---- */
 
+async function subscriberCount(userId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(subscriberTable)
+    .where(eq(subscriberTable.userId, userId));
+  return Number(row?.n ?? 0);
+}
+
 /** Bulk add. Pasting is the normal path, so this takes a raw block and
  * reports what it could and couldn't read rather than rejecting the lot. */
 export async function addSubscribers(input: { raw: string }) {
@@ -409,6 +417,26 @@ export async function addSubscribers(input: { raw: string }) {
   const { valid, invalid } = parseSubscribers(input.raw);
   if (valid.length === 0) {
     return { ok: false, error: "No valid email addresses found in that." };
+  }
+
+  // Only the shared relay is capped. Checked before inserting rather than
+  // after, so a paste either lands whole or not at all.
+  const cfg = await loadSenderConfig(userId);
+  if (cfg.provider === "default") {
+    const existing = await subscriberCount(userId);
+    const room = DEFAULT_SENDER_SUBSCRIBER_CAP - existing;
+    if (room <= 0) {
+      return {
+        ok: false,
+        error: `The built-in sender is limited to ${DEFAULT_SENDER_SUBSCRIBER_CAP} subscribers and you have ${existing}. Connect SendGrid or your own SMTP server in Sending Settings to go beyond that.`,
+      };
+    }
+    if (valid.length > room) {
+      return {
+        ok: false,
+        error: `That would put you over the ${DEFAULT_SENDER_SUBSCRIBER_CAP}-subscriber limit on the built-in sender — you have ${existing} and room for ${room} more. Connect SendGrid or your own SMTP server to lift the cap.`,
+      };
+    }
   }
 
   // onConflictDoNothing targets the (user_id, lower(email)) unique index, so
@@ -601,6 +629,19 @@ export async function saveSenderSettings(input: {
 }) {
   const userId = await requireUserId();
   const fromEmail = input.fromEmail.trim().toLowerCase();
+
+  // Guard the other direction too: switching back to the shared relay with a
+  // list already larger than the cap would put it over without an add.
+  if (input.provider === "default") {
+    const existing = await subscriberCount(userId);
+    if (existing > DEFAULT_SENDER_SUBSCRIBER_CAP) {
+      return {
+        ok: false,
+        error: `You have ${existing} subscribers, over the ${DEFAULT_SENDER_SUBSCRIBER_CAP} the built-in sender allows. Remove some, or keep sending through your own provider.`,
+      };
+    }
+  }
+
   if (input.provider !== "default") {
     if (!EMAIL_RE.test(fromEmail)) {
       return { ok: false, error: "Set a valid 'from' address for this provider." };
