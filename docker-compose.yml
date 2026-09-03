@@ -170,6 +170,12 @@ services:
       SMTP_HOST: ${SMTP_HOST:-mailhost}
       SMTP_PORT: ${SMTP_PORT:-25}
       MAIL_FROM: ${MAIL_FROM:-agenda.delivery <update@agenda.delivery>}
+      # "Generate from AI" in the mailing-list template editor calls Ollama
+      # directly from the UI container -- the agents are module-scoped and
+      # have nothing to do with a user drafting a template.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      AGENT_MODEL: ${AGENT_MODEL:-glm-5.3}
       # UI reaches the orchestrator for manual triggers (server-side only).
       ORCHESTRATOR_URL: http://orchestrator:8000
       NODE_ENV: production
