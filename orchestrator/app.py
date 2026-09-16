@@ -26,7 +26,23 @@ ESCALATION_SECS_DEFAULT = int(os.environ.get("ESCALATION_INTERVAL_SECS", "900"))
 
 
 def enqueue(job: dict) -> None:
-    redis_client().rpush(JOBS_KEY, json.dumps(job))
+    """Queue a job unless the identical job is already waiting.
+
+    The queue holds pending intentions, not a tally. Without this the
+    six-hourly scheduler and the requeue-on-pause stack the same pipeline a
+    dozen deep while the model is unavailable, and every copy costs a full
+    run once the pause lifts.
+
+    ponytail: scans the list, which is fine while it holds one job per
+    module; move to a companion Redis set if it ever grows past a few
+    hundred.
+    """
+    payload = json.dumps(job, sort_keys=True)
+    r = redis_client()
+    for queued in r.lrange(JOBS_KEY, 0, -1):
+        if (queued.decode() if isinstance(queued, bytes) else queued) == payload:
+            return
+    r.rpush(JOBS_KEY, payload)
 
 
 def _schedule_secs(agent_type: str, default: int) -> int | None:
@@ -74,7 +90,7 @@ def _worker_loop() -> None:
                 # the real reset time; 15 min is a safe default floor. A monthly
                 # cap does not clear on that floor, and retrying against it
                 # spends the rest of the month re-reading the same refusal.
-                r.rpush(JOBS_KEY, json.dumps(job))
+                enqueue(job)
                 pause(6 * 3600 if "monthly" in str(e).lower() else 15 * 60)
         except Exception as e:  # noqa: BLE001 — worker must never die
             print(f"[worker] error: {e}", flush=True)
