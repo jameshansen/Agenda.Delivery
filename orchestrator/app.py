@@ -25,6 +25,15 @@ SPIDER_SECS_DEFAULT = int(os.environ.get("SPIDER_INTERVAL_SECS", "3600"))  # 1h
 ESCALATION_SECS_DEFAULT = int(os.environ.get("ESCALATION_INTERVAL_SECS", "900"))  # 15m
 
 
+def _already_queued(r, payload) -> bool:
+    """Is this exact payload already waiting in the queue?"""
+    want = payload.decode() if isinstance(payload, bytes) else payload
+    for queued in r.lrange(JOBS_KEY, 0, -1):
+        if (queued.decode() if isinstance(queued, bytes) else queued) == want:
+            return True
+    return False
+
+
 def enqueue(job: dict) -> None:
     """Queue a job unless the identical job is already waiting.
 
@@ -39,9 +48,8 @@ def enqueue(job: dict) -> None:
     """
     payload = json.dumps(job, sort_keys=True)
     r = redis_client()
-    for queued in r.lrange(JOBS_KEY, 0, -1):
-        if (queued.decode() if isinstance(queued, bytes) else queued) == payload:
-            return
+    if _already_queued(r, payload):
+        return
     r.rpush(JOBS_KEY, payload)
 
 
@@ -78,6 +86,12 @@ def _worker_loop() -> None:
                 continue
             item = r.blpop(JOBS_KEY, timeout=5)
             if not item:
+                continue
+            # A backlog built up before enqueue started deduping, or pushed by
+            # two racing callers, still holds repeats. If an identical job is
+            # further down the queue, let that copy do the work and drop this
+            # one -- otherwise one update is paid for a dozen times over.
+            if _already_queued(r, item[1]):
                 continue
             job = json.loads(item[1])
             flow = FLOWS.get(job.get("flow"))

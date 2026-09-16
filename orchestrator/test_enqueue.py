@@ -100,6 +100,18 @@ def main():
     enqueue(job)
     assert len(r.items) == 2, r.items
 
+    # The worker drops a popped job that still has a copy behind it, so a
+    # backlog pushed before enqueue deduped drains without running N times.
+    from app import _already_queued
+    dup = json.dumps(job, sort_keys=True)
+    r.items = [dup, dup, dup]
+    popped = r.items.pop(0)
+    assert _already_queued(r, popped) is True          # two copies left: skip
+    popped = r.items.pop(0)
+    assert _already_queued(r, popped) is True          # one copy left: skip
+    popped = r.items.pop(0)
+    assert _already_queued(r, popped) is False         # last copy: run it
+
     print("ok - queue holds one copy per pending job")
 
 
