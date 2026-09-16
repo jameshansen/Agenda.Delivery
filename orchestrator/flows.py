@@ -18,21 +18,46 @@ def _module_health(slug: str) -> str | None:
     return row["health"] if row else None
 
 
+def _keywords_awaiting_summary(slug: str) -> bool:
+    """A keyword a reader added since the last agenda has nothing to show
+    yet, and waiting a fortnight for the next meeting is not an answer."""
+    return bool(db.one(
+        """SELECT 1 FROM keyword k JOIN module m ON m.id = k.module_id
+            WHERE m.slug = %s AND (k.summary IS NULL OR k.summary = '')
+            LIMIT 1""", (slug,)))
+
+
 def run_pipeline(slug: str, trigger: str = "manual") -> dict:
     """Full per-module pipeline. Returns a summary dict of what ran."""
     check = dispatch_agent("checking", slug=slug, trigger=trigger)
     agenda_text = (check.get("data") or {}).get("agenda_text", "")
     is_new = (check.get("data") or {}).get("is_new", False)
 
-    # Conditional: broken config -> repair, then re-check.
-    if _module_health(slug) in ("broken", "repairing"):
-        dispatch_agent("scraper_repair", slug=slug, trigger="repair")
-        recheck = dispatch_agent("checking", slug=slug, trigger=trigger)
-        agenda_text = (recheck.get("data") or {}).get("agenda_text", "") or agenda_text
-        is_new = (recheck.get("data") or {}).get("is_new", False) or is_new
+    # Conditional: a config that has just broken gets one repair attempt.
+    # The repair fetches the agenda itself, so read its output rather than
+    # paying for a second full check. A module already marked 'broken' has
+    # had that attempt and failed it; repairing it again every cycle spends
+    # the same tokens on the same dead site.
+    if _module_health(slug) == "repairing":
+        repair = dispatch_agent("scraper_repair", slug=slug, trigger="repair")
+        rd = repair.get("data") or {}
+        agenda_text = rd.get("agenda_text", "") or agenda_text
+        is_new = rd.get("is_new", False) or is_new
 
     if len(agenda_text) < 50:
         return {"slug": slug, "summarized": False, "reason": "no agenda content"}
+
+    # The expensive leg. Summary, keyword and categorization rewrite what is
+    # already on the page, so running them on every six-hourly check pays a
+    # full set of LLM calls to reproduce the last result. Council agendas are
+    # biweekly; gate on an actual new agenda.
+    if not is_new:
+        if not _keywords_awaiting_summary(slug):
+            return {"slug": slug, "summarized": False, "reason": "no new agenda"}
+        kw = dispatch_agent("keyword", slug=slug, trigger=trigger,
+                            inputs={"agenda_text": agenda_text})
+        return {"slug": slug, "summarized": False, "reason": "new keywords only",
+                "ok": {"keyword": kw.get("ok")}}
 
     # Fan-out: these three are independent — run in parallel.
     inputs = {"agenda_text": agenda_text}

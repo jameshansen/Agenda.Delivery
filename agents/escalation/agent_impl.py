@@ -254,6 +254,16 @@ class EscalationAgent(BaseAgent):
                     "link": "",
                 })
 
+        # Drop anything already recorded before spending a model call on it.
+        # A flagged snippet sits in the 24h window for ninety-six ticks, and
+        # judging it every tick buys the same verdict ninety-five extra times.
+        for c in candidates:
+            c["fingerprint"] = fingerprint("bad_output", c["where"], _clip(c["text"], 200))
+        if candidates:
+            known = {r["fingerprint"] for r in db.query(
+                "SELECT fingerprint FROM escalation WHERE fingerprint = ANY(%s)",
+                ([c["fingerprint"] for c in candidates],))}
+            candidates = [c for c in candidates if c["fingerprint"] not in known]
         if not candidates:
             return []
 
@@ -269,7 +279,7 @@ class EscalationAgent(BaseAgent):
                 continue
             out.append({
                 "kind": "bad_output",
-                "fingerprint": fingerprint("bad_output", c["where"], _clip(c["text"], 200)),
+                "fingerprint": c["fingerprint"],
                 "severity": verdict.get("severity", "warning"),
                 "subject": f"Coding error in output: {c['where']}",
                 "body": (
@@ -286,7 +296,7 @@ class EscalationAgent(BaseAgent):
         for c in candidates[MAX_LLM_TRIAGE:]:
             out.append({
                 "kind": "bad_output",
-                "fingerprint": fingerprint("bad_output", c["where"], _clip(c["text"], 200)),
+                "fingerprint": c["fingerprint"],
                 "severity": "warning",
                 "subject": f"Coding error in output: {c['where']}",
                 "body": f"Where: {c['where']}\n(not model-triaged: over the per-run budget)\n\n{_clip(c['text'], 1500)}",

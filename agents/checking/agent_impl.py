@@ -46,9 +46,13 @@ class CheckingAgent(BaseAgent):
         if not found["ok"]:
             self.emit("Could not find a recent meeting agenda — the listing page may have changed.",
                       "agenda.find_latest", found["detail"])
-            db.execute("UPDATE module SET health='repairing', last_checked=now() WHERE id=%s",
-                       (mod["id"],))
-            return "No recent agenda found — needs repair"
+            # First failure asks for a repair. A second in a row means the
+            # repair did not work, so stop paying for a browser loop every
+            # cycle and let the Escalation Agent put it in front of a human.
+            health = "broken" if mod["health"] in ("repairing", "broken") else "repairing"
+            db.execute("UPDATE module SET health=%s, last_checked=now() WHERE id=%s",
+                       (health, mod["id"]))
+            return f"No recent agenda found — marked {health}"
 
         d = found["data"]
         agenda_text = d.get("agendaText", "") or ""

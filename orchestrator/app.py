@@ -69,11 +69,13 @@ def _worker_loop() -> None:
                 continue
             try:
                 flow(job)
-            except RateLimited:
+            except RateLimited as e:
                 # Requeue this job and pause. A human / Claude-for-Chrome checks
-                # the real reset time; 15 min is a safe default floor.
+                # the real reset time; 15 min is a safe default floor. A monthly
+                # cap does not clear on that floor, and retrying against it
+                # spends the rest of the month re-reading the same refusal.
                 r.rpush(JOBS_KEY, json.dumps(job))
-                pause(15 * 60)
+                pause(6 * 3600 if "monthly" in str(e).lower() else 15 * 60)
         except Exception as e:  # noqa: BLE001 — worker must never die
             print(f"[worker] error: {e}", flush=True)
             time.sleep(1)
@@ -98,7 +100,14 @@ def _scheduler_loop() -> None:
                 continue
             cs = _schedule_secs("checking", CHECK_SECS_DEFAULT)
             if cs and now - last.get("checking", 0) >= cs:
-                mods = db.query("SELECT slug FROM module WHERE is_demo = FALSE")
+                # A module marked broken has already failed a repair. Its
+                # check is an LLM browser loop, so re-running it every six
+                # hours re-pays for the same failure four times a day. Give
+                # a dead site one retry a day instead.
+                mods = db.query(
+                    """SELECT slug FROM module WHERE is_demo = FALSE
+                        AND (health <> 'broken' OR last_checked IS NULL
+                             OR last_checked < now() - INTERVAL '24 hours')""")
                 for m in mods:
                     enqueue({"flow": "pipeline", "slug": m["slug"],
                              "trigger": "scheduled update"})

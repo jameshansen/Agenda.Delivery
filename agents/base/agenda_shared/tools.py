@@ -744,7 +744,12 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                 })
                 try:
                     decision = complete_json(system, user, model=model)
-                except Exception:
+                except Exception as e:
+                    # A quota refusal is not a bad step to shrug off: swallowing
+                    # it walks the remaining steps asking a model that has
+                    # already said no. Let it out so the queue pauses.
+                    if "OLLAMA_RATE_LIMITED" in str(e):
+                        raise
                     decision = {"action": "fail", "reason": "llm error"}
 
                 trail.append({k: decision.get(k) for k in ("action", "ref", "url", "reason")})
@@ -906,6 +911,8 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
             "data": result_data,
         }
     except Exception as e:
+        if "OLLAMA_RATE_LIMITED" in str(e):
+            raise
         return {"ok": False, "detail": f"browser_find_latest failed: {e}", "data": {}}
 
 

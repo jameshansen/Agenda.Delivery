@@ -81,8 +81,12 @@ client + API key handling, the Postgres pool, the Redis event bus, the
 
 ## Flows (`orchestrator/flows.py`)
 
-- **pipeline** — `checking` → (if broken: `scraper_repair` + re-check) → fan out
-  `summary` + `keyword` + `categorization` in parallel.
+- **pipeline** — `checking` → (if it just broke: one `scraper_repair`, whose own
+  agenda fetch feeds the rest) → fan out `summary` + `keyword` +
+  `categorization` in parallel, but only when the agenda is actually new. A
+  routine check that finds nothing new costs no model calls beyond the check
+  itself; a module already marked `broken` is retried once a day, not every
+  six hours, and is not repaired again until a human or the spider intervenes.
 - **spider** — `spider` discovers/creates a module → orchestrator hands it to
   `scraper_create` → first pipeline run.
 - **escalation** — on its own schedule (15m), sweeps failed runs, output that

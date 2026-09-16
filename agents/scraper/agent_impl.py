@@ -154,18 +154,22 @@ class _ScraperBase(BaseAgent):
         title = d.get("meetingTitle")
         if title and title != "Council Meeting":
             mdate = _parse_dt(d.get("meetingDate")) or _now()
-            db.execute(
+            inserted = db.execute(
                 """INSERT INTO meeting (module_id, date, title, kind, pages, pdf_url, meeting_url)
                    VALUES (%s,%s,%s,'Council Meeting',%s,%s,%s)
-                   ON CONFLICT (module_id, date, title) DO NOTHING""",
+                   ON CONFLICT (module_id, date, title) DO NOTHING
+                   RETURNING id""",
                 (mod["id"], _naive(mdate), title, d.get("pages") or 0,
                  (d.get("pdfLinks") or [None])[0], d.get("meetingUrl")))
             self.emit(f'{"Post-repair: found" if repair else "Found"} and recorded '
                       f'"{title}" ({len(d.get("pdfLinks") or [])} PDF links).',
                       "agenda.find_latest", found["detail"])
             tools.record_additional_council_meeting(mod["id"], d.get("additionalMeeting"), self.emit)
-            # Expose agenda_text; the orchestrator runs summary/keyword/categorize.
+            # Expose agenda_text; the orchestrator runs summary/keyword/categorize
+            # off it instead of spending a second full check to refetch the same
+            # page. is_new says whether that fan-out is worth paying for.
             self.output["agenda_text"] = d.get("agendaText", "")
+            self.output["is_new"] = bool(inserted)
             return True
         self.emit("No specific meeting title found yet — the Checking Agent will populate it next run.",
                   "agenda.find_latest", found["detail"])
