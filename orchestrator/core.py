@@ -91,10 +91,13 @@ def dispatch_agent(agent_type: str, *, slug: str | None = None,
 
     run_id = _create_run(agent_type, module_id, trigger)
     # Transparency: announce how this run was started, in the agent's own
-    # stream ("Task started by scheduled update", etc.).
-    emit_event(run_id, DISPLAY_NAMES.get(agent_type, agent_type),
-               f"Task started by {trigger}.", tool=None,
-               detail=f"trigger: {trigger}", module_id=module_id)
+    # stream ("Task started by scheduled update", etc.). The exception is the
+    # scheduled escalation sweep -- housekeeping nobody is watching, which
+    # otherwise posts a start banner every tick for work it did not find.
+    if not (agent_type == "escalation" and trigger == "scheduled update"):
+        emit_event(run_id, DISPLAY_NAMES.get(agent_type, agent_type),
+                   f"Task started by {trigger}.", tool=None,
+                   detail=f"trigger: {trigger}", module_id=module_id)
     job = {
         "run_id": run_id,
         "agent": agent_type,

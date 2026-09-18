@@ -91,11 +91,10 @@ class EscalationAgent(BaseAgent):
 
     def run(self, job: dict) -> str:
         hours = int((job.get("inputs") or {}).get("window_hours") or DEFAULT_WINDOW_HOURS)
-        self.emit(
-            f"Sweeping the last {hours}h for failures worth escalating.",
-            "escalate.scan", f"window: {hours}h",
-        )
 
+        # No opening announcement. This sweep runs on a timer and finds
+        # nothing almost every time; saying so is what made a system with no
+        # work to do look like one that never stops.
         findings: list[dict] = []
         for label, check in (
             ("failed agent runs", self._failed_runs),
@@ -116,8 +115,8 @@ class EscalationAgent(BaseAgent):
 
         fresh = [f for f in findings if self._record(f)]
         if not fresh:
-            self.emit("Nothing new to escalate — the system looks healthy.",
-                      "escalate.scan", f"{len(findings)} known issue(s), 0 new")
+            # Silent on purpose: a clean sweep is the normal case, and an
+            # event per tick buries the ones that matter.
             return f"No new escalations ({len(findings)} already known)"
 
         self.output = {"escalated": len(fresh)}

@@ -89,9 +89,10 @@ client + API key handling, the Postgres pool, the Redis event bus, the
   six hours, and is not repaired again until a human or the spider intervenes.
 - **spider** — `spider` discovers/creates a module → orchestrator hands it to
   `scraper_create` → first pipeline run.
-- **escalation** — on its own schedule (15m), sweeps failed runs, output that
+- **escalation** — on its own schedule (1h), sweeps failed runs, output that
   reads like a coding error, `site_error` rows written by the UI, and modules
-  stuck broken; emails anything new to `ADMIN_EMAIL`.
+  stuck broken; emails anything new to `ADMIN_EMAIL`. A sweep that finds
+  nothing emits no events, so the activity feed shows work, not heartbeats.
 
 ## Adding an agent
 

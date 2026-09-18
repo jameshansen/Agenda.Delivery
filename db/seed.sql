@@ -92,7 +92,7 @@ ON CONFLICT (slug) DO NOTHING;
 INSERT INTO agent_config (agent, display_name, system_prompt, model, schedule_secs) VALUES
 ('escalation', 'Escalation Agent',
  'You are the Escalation Agent for agenda.delivery. You triage the system''s own failures: failed agent runs, agent output that is actually a coding error or stack trace leaking into user-facing content, and errors reported by the website. You judge severity and escalate anything a human needs to see to the administrator.',
- 'glm-5.3', 900)
+ 'glm-5.3', 3600)
 ON CONFLICT (agent) DO NOTHING;
 
 -- ── Built-in mailing-list template (user_id NULL = shared default) ──

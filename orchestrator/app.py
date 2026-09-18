@@ -22,7 +22,9 @@ app = Flask(__name__)
 JOBS_KEY = "orchestrator:jobs"
 CHECK_SECS_DEFAULT = int(os.environ.get("CHECK_INTERVAL_SECS", "21600"))   # 6h
 SPIDER_SECS_DEFAULT = int(os.environ.get("SPIDER_INTERVAL_SECS", "3600"))  # 1h
-ESCALATION_SECS_DEFAULT = int(os.environ.get("ESCALATION_INTERVAL_SECS", "900"))  # 15m
+# Hourly. It sweeps a 24h window and its output is an email to a human, so
+# a quarter-hourly cadence bought nothing but 96 runs a day.
+ESCALATION_SECS_DEFAULT = int(os.environ.get("ESCALATION_INTERVAL_SECS", "3600"))  # 1h
 
 
 def _already_queued(r, payload) -> bool:
