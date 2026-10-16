@@ -1,13 +1,13 @@
-// Server-only Ollama Cloud client. The agents have their own (Python) client;
+// Server-only Charm Hyper client. The agents have their own (Python) client;
 // this exists for the one thing the UI generates itself: mailing-list
 // templates from a prompt. Same endpoint, same model env vars.
 
-const BASE_URL = (process.env.OLLAMA_BASE_URL ?? "").replace(/\/+$/, "");
-const API_KEY = process.env.OLLAMA_API_KEY ?? "";
-const MODEL = process.env.AGENT_MODEL ?? "glm-5.3";
+const BASE_URL = (process.env.HYPER_BASE_URL || "https://hyper.charm.land/v1").replace(/\/+$/, "");
+const API_KEY = process.env.HYPER_API_KEY ?? "";
+const MODEL = process.env.AGENT_MODEL || "glm-5.3-flash";
 
 export function llmConfigured(): boolean {
-  return Boolean(BASE_URL);
+  return Boolean(API_KEY);
 }
 
 export async function chat(
@@ -15,13 +15,13 @@ export async function chat(
   user: string,
   opts: { model?: string; temperature?: number; timeoutMs?: number } = {},
 ): Promise<string> {
-  if (!BASE_URL) throw new Error("OLLAMA_BASE_URL is not configured on this server.");
+  if (!API_KEY) throw new Error("HYPER_API_KEY is not configured on this server.");
 
-  const res = await fetch(`${BASE_URL}/api/chat`, {
+  const res = await fetch(`${BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+      Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({
       model: opts.model ?? MODEL,
@@ -29,17 +29,17 @@ export async function chat(
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      stream: false,
-      options: { temperature: opts.temperature ?? 0.4 },
+      temperature: opts.temperature ?? 0.4,
     }),
     signal: AbortSignal.timeout(opts.timeoutMs ?? 180_000),
   });
 
   if (res.status === 429) throw new Error("The model is rate limited right now. Try again shortly.");
+  if (res.status === 402) throw new Error("The model account is out of credits.");
   if (!res.ok) throw new Error(`Model returned ${res.status}: ${(await res.text()).slice(0, 200)}`);
 
-  const data = (await res.json()) as { message?: { content?: string } };
-  return data.message?.content ?? "";
+  const data = (await res.json()) as { choices?: { message?: { content?: string | null } }[] };
+  return data.choices?.[0]?.message?.content ?? "";
 }
 
 /** Pull an HTML document out of a model response that may be fenced or

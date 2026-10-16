@@ -8,7 +8,7 @@ and CI/CD via GitHub Actions.
 ```bash
 # 1. Create .env from the production template
 cp .env.example .env
-# Fill in AUTH_SECRET (npx auth secret), Google OAuth, Ollama cloud keys
+# Fill in AUTH_SECRET (npx auth secret), Google OAuth, Charm Hyper key
 
 # 2. Build and start
 docker compose -f docker-compose.prod.yml up -d --build
@@ -91,8 +91,7 @@ Runs on push to `main`:
 | `AUTH_SECRET` | Auth.js secret (`npx auth secret`) |
 | `AUTH_GOOGLE_ID` | Google OAuth client ID |
 | `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
-| `OLLAMA_BASE_URL` | Ollama cloud endpoint (optional) |
-| `OLLAMA_API_KEY` | Ollama cloud API key (optional) |
+| `HYPER_API_KEY` | Charm Hyper API key (optional) |
 
 ## VPS setup (one-time)
 
@@ -128,9 +127,10 @@ Key production variables:
 | `AUTH_SECRET` | yes | — | `npx auth secret` to generate |
 | `AUTH_GOOGLE_ID` | no | — | Without it, sign-in is disabled |
 | `AUTH_GOOGLE_SECRET` | no | — | |
-| `OLLAMA_BASE_URL` | no | — | Ollama cloud endpoint; empty = mock LLM |
-| `OLLAMA_API_KEY` | no | — | |
-| `AGENT_MODEL` | no | `glm-4.6` | Model for agent reasoning |
-| `SUMMARY_MODEL` | no | `gemma3` | Lighter model for summaries |
+| `HYPER_BASE_URL` | no | `https://hyper.charm.land/v1` | Any OpenAI-compatible endpoint |
+| `HYPER_API_KEY` | no | — | Empty = mock LLM |
+| `AGENT_MODEL` | no | `glm-5.3-flash` | Model for agent reasoning |
+| `SUMMARY_MODEL` | no | `gemma-4-26b-a4b-it` | Lighter model for summaries |
+| `IMAGE_MODEL` | no | `prism` | Every call that carries an image |
 | `NEXTAUTH_URL` | no | `http://localhost` | Canonical URL for callbacks |
 | `NGINX_PORT` | no | `80` | External nginx port |

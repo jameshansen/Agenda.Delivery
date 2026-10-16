@@ -77,15 +77,17 @@ const TOOL_META: Record<string, { icon: string; color: string; label: string }> 
 };
 const DEFAULT_TOOL_META = { icon: "fa-flag", color: "text-ink-soft", label: "" };
 
-/** Which Ollama model actually served an LLM-call step. No real provider
+/** Which model actually served an LLM-call step. No real provider
  * logos here (no assets, and reproducing brand marks isn't appropriate) --
  * each gets a small abstract monogram chip instead, colored in the
  * general spirit of the provider's brand without copying it. Matched by
- * prefix since tags vary ("glm-5.3" has no tag, "gemma4:31b" and
- * "deepseek-v4-flash:0731" do). */
+ * prefix, first match wins, since older events carry Ollama tags
+ * ("gemma4:31b") and newer ones Hyper ids ("gemma-4-26b-a4b-it"). */
 const MODEL_META: { prefix: string; label: string; glyph: string; chip: string; text: string }[] = [
+  { prefix: "glm-5.3-flash", label: "GLM 5.3 Flash", glyph: "Z", chip: "bg-blue-600", text: "text-blue-700" },
   { prefix: "glm", label: "GLM 5.3", glyph: "Z", chip: "bg-blue-600", text: "text-blue-700" },
-  { prefix: "gemma4", label: "Gemma", glyph: "G", chip: "bg-violet-500", text: "text-violet-700" },
+  { prefix: "gemma", label: "Gemma", glyph: "G", chip: "bg-violet-500", text: "text-violet-700" },
+  { prefix: "prism", label: "Prism", glyph: "P", chip: "bg-pink-500", text: "text-pink-700" },
   { prefix: "deepseek", label: "DeepSeek", glyph: "D", chip: "bg-indigo-600", text: "text-indigo-700" },
 ];
 

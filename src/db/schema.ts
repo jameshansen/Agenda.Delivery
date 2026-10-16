@@ -176,7 +176,7 @@ export const agentEvents = pgTable("agent_event", {
   /** Full system+user LLM prompt / raw response for this step, when it was an LLM call. */
   prompt: text("prompt"),
   response: text("response"),
-  /** The Ollama model that served this step's LLM call (e.g. "glm-5.3"). */
+  /** The model that served this step's LLM call (e.g. "glm-5.3-flash"). */
   model: text("model"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -445,7 +445,7 @@ export const agentConfig = pgTable("agent_config", {
   agent: agentTypeEnum("agent").primaryKey(),
   displayName: text("display_name").notNull(),
   systemPrompt: text("system_prompt").notNull(),
-  model: text("model").notNull().default("glm-5.3"),
+  model: text("model").notNull().default("glm-5.3-flash"),
   params: jsonb("params").notNull().default({}),
   scheduleSecs: integer("schedule_secs"),
   enabled: boolean("enabled").notNull().default(true),

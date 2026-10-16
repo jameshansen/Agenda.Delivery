@@ -570,7 +570,7 @@ export async function generateTemplate(input: {
 }) {
   await requireUserId();
   if (!llmConfigured()) {
-    return { ok: false, error: "The model isn't configured on this server (OLLAMA_BASE_URL is unset)." };
+    return { ok: false, error: "The model isn't configured on this server (HYPER_API_KEY is unset)." };
   }
   if (!input.prompt.trim() && !input.info.trim()) {
     return { ok: false, error: "Describe the template you want." };
