@@ -125,22 +125,6 @@ def check_unsubscribe_headers():
     assert msg["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
 
 
-def check_llm_routing():
-    from agenda_shared.llm import _payload
-    from agenda_shared.settings import AGENT_MODEL, SUMMARY_MODEL, IMAGE_MODEL
-    msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "look"}]
-    assert _payload(msgs, None, 0.4, False, None)["model"] == AGENT_MODEL
-    assert _payload(msgs, None, 0.4, True, None)["model"] == SUMMARY_MODEL
-    assert _payload(msgs, "x", 0.4, False, None)["model"] == "x"
-    # An image overrides even an explicit model: images only ever go to Prism.
-    body = _payload(msgs, "glm-5.3-flash", 0.4, False, ["data:image/png;base64,AA"])
-    assert body["model"] == IMAGE_MODEL, body["model"]
-    parts = body["messages"][-1]["content"]
-    assert parts[0] == {"type": "text", "text": "look"}
-    assert parts[1]["image_url"]["url"] == "data:image/png;base64,AA"
-    assert msgs[-1]["content"] == "look", "caller's messages were mutated"
-
-
 def check_render():
     out = mailer.render("<p>{{greeting}} {{ name }}</p>", {"greeting": "Hi", "name": "Sam"})
     assert out == "<p>Hi Sam</p>", out
@@ -158,5 +142,4 @@ if __name__ == "__main__":
     check_unsubscribe_headers()
     check_empty_image_stripping()
     check_render()
-    check_llm_routing()
     print("selfcheck: all checks passed")

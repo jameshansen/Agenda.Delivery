@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY base/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Shared utility (Hyper client + key handling, db, redis bus, base agent).
+# Shared utility (Ollama client + key handling, db, redis bus, base agent).
 COPY base/agenda_shared ./agenda_shared
 # The specific agent's app.py + agent_impl.py.
 COPY ${AGENT}/ ./

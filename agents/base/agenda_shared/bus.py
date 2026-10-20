@@ -30,7 +30,7 @@ def emit_event(run_id: str, agent: str, action: str,
     `prompt`/`response`, if given, are the full system+user LLM prompt and
     raw response for this step -- lets the UI offer an expandable "view
     full prompt/response" affordance; most non-LLM steps have neither.
-    `model`, if given, is the model that actually served this step's
+    `model`, if given, is the Ollama model that actually served this step's
     LLM call (e.g. "glm-5.3-flash")."""
     if prompt and len(prompt) > 12_000:
         prompt = prompt[:12_000] + "\n\n…(truncated)"

@@ -63,15 +63,15 @@ transient failure, and marks the run completed/failed. Agents emit progress via
 
 ## Shared code (`agents/base/agenda_shared/`)
 
-Baked into every agent image (and the orchestrator) — includes the Charm Hyper
+Baked into every agent image (and the orchestrator) — includes the Ollama Cloud
 client + API key handling, the Postgres pool, the Redis event bus, the
 `BaseAgent`/Flask factory, and the scrape tools.
 
 | module | purpose |
 |--------|---------|
-| `settings.py` | env config (DB, Redis, Hyper) |
+| `settings.py` | env config (DB, Redis, Ollama) |
 | `db.py` | Postgres pool + `query/one/execute` |
-| `llm.py` | Charm Hyper chat client (+ dev mock); images route to Prism |
+| `llm.py` | Ollama Cloud chat client (+ dev mock) |
 | `bus.py` | `emit_event` → Postgres + Redis pub/sub |
 | `agent.py` | `BaseAgent`, `create_agent_app` |
 | `tools.py` | crawl / web-search / find-latest / verify / geo (SSRF-guarded) |

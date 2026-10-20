@@ -17,12 +17,11 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
       AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
-      # Charm Hyper LLM
-      HYPER_BASE_URL: ${HYPER_BASE_URL:-https://hyper.charm.land/v1}
-      HYPER_API_KEY: ${HYPER_API_KEY:-}
+      # Ollama cloud LLM
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       AGENT_MODEL: ${AGENT_MODEL:-glm-5.3-flash}
-      SUMMARY_MODEL: ${SUMMARY_MODEL:-gemma-4-26b-a4b-it}
-      IMAGE_MODEL: ${IMAGE_MODEL:-prism}
+      SUMMARY_MODEL: ${SUMMARY_MODEL:-gemma4:31b}
       # Next.js
       NODE_ENV: production
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}

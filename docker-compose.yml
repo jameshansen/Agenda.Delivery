@@ -7,11 +7,10 @@
 x-agent-env: &agent-env
   DATABASE_URL: postgresql://agenda:${POSTGRES_PASSWORD:-agenda}@postgres:5432/agenda
   REDIS_URL: redis://redis:6379/0
-  HYPER_BASE_URL: ${HYPER_BASE_URL:-https://hyper.charm.land/v1}
-  HYPER_API_KEY: ${HYPER_API_KEY:-}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+  OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
   AGENT_MODEL: ${AGENT_MODEL:-glm-5.3-flash}
-  SUMMARY_MODEL: ${SUMMARY_MODEL:-gemma-4-26b-a4b-it}
-  IMAGE_MODEL: ${IMAGE_MODEL:-prism}
+  SUMMARY_MODEL: ${SUMMARY_MODEL:-gemma4:31b}
   RENDERER_URL: http://renderer:8000
   BASE_URL: ${BASE_URL:-https://agenda.delivery}
 
@@ -171,11 +170,11 @@ services:
       SMTP_HOST: ${SMTP_HOST:-mailhost}
       SMTP_PORT: ${SMTP_PORT:-25}
       MAIL_FROM: ${MAIL_FROM:-agenda.delivery <update@agenda.delivery>}
-      # "Generate from AI" in the mailing-list template editor calls Hyper
+      # "Generate from AI" in the mailing-list template editor calls Ollama
       # directly from the UI container -- the agents are module-scoped and
       # have nothing to do with a user drafting a template.
-      HYPER_BASE_URL: ${HYPER_BASE_URL:-https://hyper.charm.land/v1}
-      HYPER_API_KEY: ${HYPER_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       AGENT_MODEL: ${AGENT_MODEL:-glm-5.3-flash}
       # UI reaches the orchestrator for manual triggers (server-side only).
       ORCHESTRATOR_URL: http://orchestrator:8000

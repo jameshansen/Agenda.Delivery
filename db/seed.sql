@@ -22,13 +22,13 @@ INSERT INTO agent_config (agent, display_name, system_prompt, model, schedule_se
  'glm-5.3-flash', 21600),
 ('categorization', 'Categorization Agent',
  'You are the Categorization Agent for agenda.delivery. You classify agendas into standard categories: Council Meeting, Committee Meeting, Public Hearing, Special Meeting, Workshop, Board Meeting.',
- 'gemma-4-26b-a4b-it', NULL),
+ 'gemma4:31b', NULL),
 ('summary', 'Summary Agent',
  'You are the Summary Agent for agenda.delivery. Given agenda text, you write a concise general summary (2-4 sentences) and extract 3-5 key highlights with short tags.',
- 'gemma-4-26b-a4b-it', NULL),
+ 'gemma4:31b', NULL),
 ('keyword', 'Keyword Agent',
  'You are the Keyword Agent for agenda.delivery. For each keyword users follow, you generate a bespoke summary focusing only on the parts of the agenda relevant to that keyword.',
- 'gemma-4-26b-a4b-it', NULL)
+ 'gemma4:31b', NULL)
 ON CONFLICT (agent) DO NOTHING;
 
 -- Spider auto-discovery is off for now: we run a fixed set of BC

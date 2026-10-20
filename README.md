@@ -24,7 +24,7 @@ agenda.delivery grew out of community work. It started with the [Langley Urbanis
 - **Backend:** Next.js Route Handlers + Server Actions (BFF)
 - **Data:** Postgres · Drizzle ORM
 - **Auth:** Auth.js (NextAuth v5) with Google OAuth
-- **LLM:** Charm Hyper, OpenAI-compatible (GLM 5.3 Flash for agents, Gemma 4 26B A4B for summaries, Prism for images)
+- **LLM:** Ollama cloud (glm-5.3-flash for agents, gemma4 for summaries) — OpenAI-compatible endpoint
 - **Agents:** Custom framework (base class, tool registry, SSE event streaming) — no external agent library
 - **Brand font:** Gelica (local, `src/app/fonts`)
 - Agents, data-engineering, and infra are later phases (see roadmap).
@@ -78,8 +78,8 @@ Building front-to-back: UI and site first, backend after.
   the DB (verified end-to-end on Docker Postgres).
 - **Phase 4 — Agent system** ✅ Agent framework (base class, tool registry,
   event emitter, SSE streaming); 7 agents (Spider, Scraper Create/Repair,
-  Checking, Summary, Keyword, Categorization, Escalation); Charm Hyper LLM
-  client (GLM 5.3 Flash for reasoning, Gemma 4 for summaries, Prism for images); API routes to trigger runs
+  Checking, Summary, Keyword, Categorization, Escalation); Ollama cloud LLM
+  client (glm-5.3-flash for reasoning, gemma4 for summaries); API routes to trigger runs
   and stream events; live agent-activity UI with run buttons; `agent_run`,
   `scrape_config`, `spider_candidate` tables; dev mock LLM so it works
   without an API key.
@@ -100,7 +100,7 @@ Building front-to-back: UI and site first, backend after.
 # Run individual agents against the DB (requires Postgres + .env)
 npm run test:scraper                # Scraper Create Agent (defaults to township-of-langley)
 npm run test:checking               # Checking Agent
-npm run test:summary                # Summary Agent (uses gemma-4-26b-a4b-it)
+npm run test:summary                # Summary Agent (uses gemma4:31b)
 npm run test:spider                 # Spider Agent (discovers new sources)
 npm run test:pipeline               # Full pipeline: Check → Repair → Summarize → Keywords → Categorize
 

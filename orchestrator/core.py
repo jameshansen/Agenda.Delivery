@@ -42,7 +42,7 @@ PAUSE_KEY = "orchestrator:paused_until"  # epoch secs; queue paused until then
 
 
 class RateLimited(Exception):
-    """Hyper 429 (rate limit) or 402 (out of credits) bubbled up from an agent. Pause the whole pipeline."""
+    """Ollama Cloud 429 bubbled up from an agent. Pause the whole pipeline."""
 
 
 def is_paused() -> float:
@@ -118,7 +118,7 @@ def dispatch_agent(agent_type: str, *, slug: str | None = None,
                         "data": body.get("data", {}), "run_id": run_id}
             # Agent reported an error.
             err = body.get("error", f"HTTP {res.status_code}")
-            if "LLM_RATE_LIMITED" in err:
+            if "OLLAMA_RATE_LIMITED" in err:
                 _finish_run(run_id, err)
                 raise RateLimited(err)
             last_err = err

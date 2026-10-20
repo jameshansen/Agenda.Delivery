@@ -161,8 +161,8 @@ CREATE TABLE IF NOT EXISTS agent_event (
   -- readable action/detail fields most events use. NULL for non-LLM steps.
   prompt TEXT,
   response TEXT,
-  -- The model that actually served this step's LLM call (e.g.
-  -- "glm-5.3-flash", "gemma-4-26b-a4b-it"), when it was an LLM call. NULL otherwise.
+  -- The Ollama model that actually served this step's LLM call (e.g.
+  -- "glm-5.3-flash", "gemma4:31b"), when it was an LLM call. NULL otherwise.
   model TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT now()
 );
@@ -390,11 +390,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS module_keyword_output_uniq ON module_keyword_o
 -- ─────────────────────────────────────────────────────────────
 UPDATE agent_config SET model = 'glm-5.3' WHERE model = 'glm-5.2';
 
--- Agents moved to Charm Hyper: GLM 5.3 becomes GLM 5.3 Flash, Gemma 4 31B
--- becomes Gemma 4 26B A4B.
+-- GLM 5.3 Flash replaces GLM 5.3 for every agent.
 ALTER TABLE agent_config ALTER COLUMN model SET DEFAULT 'glm-5.3-flash';
 UPDATE agent_config SET model = 'glm-5.3-flash' WHERE model IN ('glm-5.2', 'glm-5.3');
-UPDATE agent_config SET model = 'gemma-4-26b-a4b-it' WHERE model LIKE 'gemma4%';
 
 -- ─────────────────────────────────────────────────────────────
 -- Escalation Agent — watches for failures and escalates to the admin.

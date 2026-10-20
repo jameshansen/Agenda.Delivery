@@ -146,7 +146,7 @@ class EscalationAgent(BaseAgent):
             out.append({
                 "kind": "agent_run",
                 "fingerprint": fingerprint("agent_run", r["agent"], r.get("module_id") or "", error[:200]),
-                "severity": "critical" if "LLM_RATE_LIMITED" in error else "warning",
+                "severity": "critical" if "OLLAMA_RATE_LIMITED" in error else "warning",
                 "subject": f"{r['agent']} failed on {where}",
                 "body": (
                     f"Agent:   {r['agent']}\n"
