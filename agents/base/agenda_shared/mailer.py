@@ -14,6 +14,7 @@ import html as html_mod
 import re
 import smtplib
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid, parseaddr
 
 import requests
 
@@ -114,6 +115,14 @@ def send(cfg: dict, to: str, subject: str, html_body: str,
         return False
 
 
+def _stamp(msg: EmailMessage) -> None:
+    """Date and Message-ID. Postfix adds neither to mail from the Docker
+    network, and spam filters mark down, or refuse, mail missing them."""
+    msg["Date"] = formatdate()
+    domain = parseaddr(str(msg["From"]))[1].rpartition("@")[2]
+    msg["Message-ID"] = make_msgid(domain=domain or None)
+
+
 def send_plain(to: str, subject: str, body: str) -> bool:
     """Platform-relay plain-text send (subscriber alerts, escalation mail)."""
     if not settings.SMTP_HOST:
@@ -123,6 +132,7 @@ def send_plain(to: str, subject: str, body: str) -> bool:
     msg["From"] = settings.MAIL_FROM
     msg["To"] = to
     msg["Subject"] = subject
+    _stamp(msg)
     msg.set_content(body)
     try:
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as s:
@@ -151,6 +161,7 @@ def _build(cfg: dict, to: str, subject: str, html_body: str, text_body: str,
     msg["From"] = from_header(cfg)
     msg["To"] = to
     msg["Subject"] = subject
+    _stamp(msg)
     for key, value in _unsubscribe_headers(one_click_url).items():
         msg[key] = value
     msg.set_content(text_body)

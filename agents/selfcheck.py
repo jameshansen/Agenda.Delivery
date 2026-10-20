@@ -123,6 +123,8 @@ def check_unsubscribe_headers():
     msg = mailer._build({"provider": "default"}, "a@b.test", "s", "<p>h</p>", "h", url)
     assert msg["List-Unsubscribe"] == f"<{url}>"
     assert msg["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    # Postfix adds neither for mail from the Docker network.
+    assert msg["Date"] and msg["Message-ID"].endswith("@agenda.delivery>"), msg["Message-ID"]
 
 
 def check_render():
