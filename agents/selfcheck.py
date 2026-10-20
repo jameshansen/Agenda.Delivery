@@ -14,7 +14,7 @@ sys.path.insert(0, "/app")
 
 from agenda_shared import mailer                       # noqa: E402
 from agenda_shared.notify import (  # noqa: E402
-    _month_target_day, _schedule_due, ensure_unsubscribe,
+    _month_target_day, _schedule_due, agenda_email, ensure_unsubscribe,
 )
 try:
     # Escalation-only; the shared checks below still run in any other image.
@@ -135,6 +135,23 @@ def check_render():
     assert "bad()" not in mailer.to_plain_text("<div>Hello</div><script>bad()</script>")
 
 
+def check_agenda_email():
+    ctx = {"module_name": "Test Council", "module_slug": "test-council",
+           "meeting_title": "Public Hearing <draft>"}
+    meeting = {"date": datetime(2026, 10, 20), "pdf_url": "https://x.test/a.pdf"}
+    html, text = agenda_email(ctx, "Council **approved** it.\n\n- one\n- two", "summary",
+                              meeting, [{"tag": "Housing", "text": "38 units & a park"}])
+    # Escaped once, markdown turned into its HTML look, date added to a title without one.
+    assert "Public Hearing &lt;draft&gt; · October 20, 2026" in html, html
+    assert "<strong>approved</strong>" in html and "&bull;&nbsp;one" in html
+    assert "38 units &amp; a park" in html and 'href="https://x.test/a.pdf"' in html
+    assert "Read the agenda: https://x.test/a.pdf" in text and "<" not in text.replace("<draft>", "")
+    # Link mode shows the buttons, not the bare URL; no PDF means no agenda button.
+    html, text = agenda_email(ctx, "https://agenda.delivery/module/test-council", "link", None, [])
+    assert "posted a new agenda." in html and "Read the agenda" not in html
+    assert "Highlights" not in html
+
+
 if __name__ == "__main__":
     check_error_detection()
     check_schedule()
@@ -142,4 +159,5 @@ if __name__ == "__main__":
     check_unsubscribe_headers()
     check_empty_image_stripping()
     check_render()
+    check_agenda_email()
     print("selfcheck: all checks passed")

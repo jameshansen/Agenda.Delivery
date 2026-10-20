@@ -5,7 +5,8 @@ Two legs:
   - notify_subscribers: the base email/text alert to everyone subscribed.
   - run_automation_rules: the Subscriptions → Artifacts → Actions flowchart —
     per-rule content (summary / link / full text / custom-prompt / keyword
-    artifact) delivered to a script, a Discord hook, or queued to a mailing list.
+    artifact) emailed, sent to a script or a Discord hook, or queued to a
+    mailing list.
 
 Mailing lists are drained separately by flush_mailing_lists (scheduler tick).
 
@@ -96,10 +97,96 @@ def _rule_content(rule: dict, ctx: dict) -> str:
                 return out
     mode = rule.get("content_mode") or "summary"
     if mode == "link":
-        return f"https://agenda.delivery/module/{ctx['module_slug']}"
+        return f"{settings.BASE_URL}/module/{ctx['module_slug']}"
     if mode == "full_text":
         return ctx["agenda_text"][:AGENDA_CHAR_CAP]
     return ctx.get("summary") or ctx["meeting_title"]
+
+
+def _paragraphs(text: str) -> str:
+    """Summary, agenda or model text as email paragraphs. Model output leans on
+    markdown, which no mail client renders, so headings, bold and list dashes
+    are turned into their HTML look."""
+    out = []
+    for para in re.split(r"\n\s*\n", (text or "").strip()):
+        safe = mailer.escape(para)
+        safe = re.sub(r"(?m)^#{1,6}\s*", "", safe)
+        safe = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", safe)
+        safe = re.sub(r"(?m)^\s*[-*•]\s+", "&bull;&nbsp;", safe)
+        out.append(f'<p style="margin:0 0 14px 0;">{safe.replace(chr(10), "<br />")}</p>')
+    return "".join(out)
+
+
+def agenda_email(ctx: dict, content: str, mode: str, meeting: dict | None,
+                 highlights: list[dict]) -> tuple[str, str]:
+    """The "Send to my email" notification as (html, text). `mode` is the
+    rule's content mode, or "artifact" when an artifact wrote `content`."""
+    e = mailer.escape
+    module_url = f"{settings.BASE_URL}/module/{ctx['module_slug']}"
+    agenda_url = (meeting or {}).get("pdf_url") or (meeting or {}).get("meeting_url")
+    title = ctx["meeting_title"]
+    when = (meeting or {}).get("date")
+    if when and str(when.year) not in title:
+        title += f" · {calendar.month_name[when.month]} {when.day}, {when.year}"
+    lead = f"{ctx['module_name']} posted a new agenda."
+
+    body = (f'<p style="margin:0 0 14px 0;">{e(lead)}</p>' if mode == "link"
+            else _paragraphs(content))
+    if mode == "summary" and highlights:
+        rows = "".join(
+            '<tr><td style="padding:6px 0;vertical-align:top;white-space:nowrap;">'
+            '<span style="display:inline-block;background:#e9edc9;color:#3d5e2b;'
+            'border-radius:999px;padding:2px 10px;font:12px Arial,sans-serif;">'
+            f'{e(h["tag"])}</span></td>'
+            '<td style="padding:6px 0 6px 10px;font-size:15px;line-height:1.5;">'
+            f'{e(h["text"])}</td></tr>'
+            for h in highlights)
+        body += ('<div style="margin:22px 0 6px 0;font:bold 12px Arial,sans-serif;'
+                 'letter-spacing:0.08em;text-transform:uppercase;color:#6f6c60;">Highlights</div>'
+                 f'<table role="presentation" cellpadding="0" cellspacing="0">{rows}</table>')
+
+    button = ("display:inline-block;margin:0 8px 8px 0;padding:11px 22px;border-radius:999px;"
+              "border:1px solid #3d5e2b;font:bold 14px Arial,sans-serif;text-decoration:none;")
+    buttons = (f'<a href="{e(agenda_url)}" style="{button}background:#3d5e2b;color:#ffffff;">'
+               "Read the agenda</a>" if agenda_url else "")
+    buttons += f'<a href="{e(module_url)}" style="{button}color:#3d5e2b;">See it on agenda.delivery</a>'
+    preview = re.sub(r"\s+", " ", lead if mode == "link" else content).strip()[:140]
+
+    html = f"""<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f1e8;">
+<div style="display:none;max-height:0;overflow:hidden;">{e(preview)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f1e8;padding:24px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+<tr><td style="padding:0 4px 14px 4px;font-family:Georgia,'Times New Roman',serif;font-size:22px;">
+<a href="{settings.BASE_URL}" style="text-decoration:none;"><span style="color:#3d5e2b;">agenda</span><span style="color:#4f8a2f;">.delivery</span></a>
+</td></tr>
+<tr><td style="background:#ffffff;border:1px solid #e4e0d2;border-radius:14px;padding:28px;font-family:Georgia,'Times New Roman',serif;color:#1c1b16;font-size:16px;line-height:1.6;">
+<div style="font:bold 12px Arial,sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:#a85d1a;">New agenda</div>
+<h1 style="margin:6px 0 4px 0;font-size:26px;line-height:1.25;font-weight:normal;color:#1c1b16;">{e(ctx["module_name"])}</h1>
+<div style="margin:0 0 20px 0;font:14px/1.5 Arial,sans-serif;color:#6f6c60;">{e(title)}</div>
+{body}
+<div style="margin-top:22px;">{buttons}</div>
+</td></tr>
+<tr><td style="padding:16px 4px;font:12px/1.5 Arial,sans-serif;color:#6f6c60;text-align:center;">
+You get this email because of an action you set up on agenda.delivery for {e(ctx["module_name"])}.<br />
+<a href="{settings.BASE_URL}/account" style="color:#4f8a2f;">Manage your actions</a>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>"""
+
+    text = "\n\n".join(part for part in (
+        f"{ctx['module_name']} posted a new agenda: {ctx['meeting_title']}",
+        "" if mode == "link" else content,
+        f"Read the agenda: {agenda_url}" if agenda_url else "",
+        f"See it on agenda.delivery: {module_url}",
+        f"You get this email because of an action you set up on agenda.delivery. "
+        f"Manage your actions: {settings.BASE_URL}/account",
+    ) if part)
+    return html, text
 
 
 def run_automation_rules(module_id: str, ctx: dict) -> None:
@@ -109,6 +196,19 @@ def run_automation_rules(module_id: str, ctx: dict) -> None:
     except Exception as exc:
         print(f"[notify] loading automation_rules failed: {exc}")
         return
+
+    # What an email notification shows besides the rule's own content.
+    meeting, highlights = None, []
+    if any(r["action_kind"] == "email" for r in rules):
+        try:
+            meeting = db.one(
+                "SELECT date, pdf_url, meeting_url FROM meeting WHERE module_id = %s "
+                "ORDER BY date DESC LIMIT 1", (module_id,))
+            highlights = db.query(
+                "SELECT tag, text FROM highlight WHERE module_id = %s ORDER BY sort LIMIT 5",
+                (module_id,))
+        except Exception as exc:
+            print(f"[notify] loading email extras failed: {exc}")
 
     for rule in rules:
         try:
@@ -138,7 +238,10 @@ def run_automation_rules(module_id: str, ctx: dict) -> None:
             if kind == "email":
                 urow = db.one('SELECT email FROM "user" WHERE id = %s', (rule.get("user_id"),))
                 if urow and urow.get("email"):
-                    _send_email(urow["email"], f"{ctx['module_name']}: {ctx['meeting_title']}", content)
+                    mode = "artifact" if rule.get("artifact_id") else rule.get("content_mode") or "summary"
+                    html, text = agenda_email(ctx, content, mode, meeting, highlights)
+                    mailer.send(mailer.sender_settings(None), urow["email"],
+                                f"{ctx['module_name']}: {ctx['meeting_title']}", html, text)
             elif kind in ("discord", "script"):
                 target = db.one("SELECT url FROM automation_target WHERE id = %s", (rule.get("target_id"),))
                 if not target:
