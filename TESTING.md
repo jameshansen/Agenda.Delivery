@@ -87,6 +87,58 @@ To run discovery again from scratch, delete the module and its candidate row, th
 sudo -n docker exec agenda-postgres psql -U agenda -d agenda -c "DELETE FROM module WHERE slug = 'test-council'; DELETE FROM spider_candidate WHERE url = 'https://testcouncil.agenda.delivery'"
 ```
 
+## The test inbox
+
+The VPS has a mailbox for testing email, `agendatest@vmi1269820.contaboserver.net`. It belongs to `agendatest`, a system user with no login. Postfix delivers mail for it to `/var/mail/agendatest` after opendkim has signed it, so a message that lands there went through the same relay and signing as one sent to a real reader. The agenda.delivery account **Test Inbox** uses that address, follows the Test Council, and has the default "Send the summary to my email" action.
+
+Read the newest messages, check signing, or empty the inbox:
+
+```bash
+sudo -n tail -n 80 /var/mail/agendatest
+```
+
+```bash
+sudo -n grep -E "^(Subject|From|DKIM-Signature|Content-Type):" /var/mail/agendatest
+```
+
+```bash
+sudo -n truncate -s 0 /var/mail/agendatest
+```
+
+To look at the newest email as a reader would, save its HTML part, copy it off the server with `scp`, and open it in a browser:
+
+```bash
+sudo -n python3 -c "import mailbox; m = list(mailbox.mbox('/var/mail/agendatest'))[-1]; print(next(p.get_payload(decode=True).decode() for p in m.walk() if p.get_content_type() == 'text/html'))" > /tmp/latest-email.html
+```
+
+Deleting the Test Council module also deletes the account's follow and action. This sets them up again, and creates the account if it is missing:
+
+```bash
+sudo -n docker exec -i agenda-postgres psql -U agenda -d agenda <<'SQL'
+INSERT INTO "user" (name, email, email_verified)
+VALUES ('Test Inbox', 'agendatest@vmi1269820.contaboserver.net', now())
+ON CONFLICT (email) DO NOTHING;
+INSERT INTO subscription (user_id, module_id, channel, contact)
+SELECT u.id, m.id, 'email', u.email FROM "user" u, module m
+ WHERE u.email = 'agendatest@vmi1269820.contaboserver.net' AND m.slug = 'test-council'
+   AND NOT EXISTS (SELECT 1 FROM subscription s WHERE s.user_id = u.id AND s.module_id = m.id);
+INSERT INTO automation_rule (user_id, module_id, trigger, content_mode, action_kind)
+SELECT u.id, m.id, 'new_agenda', 'summary', 'email' FROM "user" u, module m
+ WHERE u.email = 'agendatest@vmi1269820.contaboserver.net' AND m.slug = 'test-council'
+   AND NOT EXISTS (SELECT 1 FROM automation_rule r WHERE r.user_id = u.id AND r.module_id = m.id AND r.action_kind = 'email');
+SQL
+```
+
+To sign in as Test Inbox, choose "Continue with email" on /login, enter the address, and read the six-digit code from the inbox. That also tests the sign-in code email. Postfix delivers `agendatest+anything@` to the same inbox, so each plus address can stand in for a separate reader.
+
+To send the Test Council's notifications without a release, run every action on it for its newest recorded meeting. This reaches every account with an action on the Test Council, Discord and script targets included.
+
+```bash
+sudo -n docker exec agenda-orchestrator python notify_now.py test-council
+```
+
+The inbox shows that mail is sent and signed. Where it lands at Gmail or Outlook (inbox or spam) needs a real address; the domain publishes SPF for the VPS and a DMARC record at `p=none`.
+
 ## Feature checklist
 
 Each check below names what to do and what should happen. "Release and check" means a release followed by the pipeline command above.
@@ -111,8 +163,10 @@ Each check below names what to do and what should happen. "Release and check" me
 
 ### Following and email
 
-- **Signed-in follow.** On the module page, Subscribe, then "Send the summary to my email". Release and check. An email arrives with the subject "Test Council: " followed by the meeting title, and the module summary as its body.
-- **Guest follow.** Signed out, enter an address in the subscribe card, confirm the emailed code on /signup, and land back on the module page following it. The next release and check sends the same email.
+- **Notification email.** Release and check (or run `notify_now.py`), then read the test inbox. The subject is "Test Council: " followed by the meeting title. The HTML part is in the site's palette, with "New agenda", the council name, the meeting title, the module summary and up to five highlights, a "Read the agenda" button to the agenda PDF, a "See it on agenda.delivery" button to the module page, and a footer linking to the account page to manage actions. The plain-text part carries the same text and links, and the message has a `DKIM-Signature` for `d=agenda.delivery`.
+- **Other content.** An email action set to "Agenda link" shows the two buttons under a one-line lead; "Full agenda text" and artifacts show their text as paragraphs, with markdown bold and bullets rendered rather than left as symbols. Highlights appear only with the AI summary.
+- **Signed-in follow.** On the module page, Subscribe, then "Send the summary to my email". The next release and check sends that account the email above.
+- **Guest follow.** Signed out, enter an address in the subscribe card, confirm the emailed code on /signup, and land back on the module page following it. An address like `agendatest+guest1@vmi1269820.contaboserver.net` makes a new account each time while its mail, the code included, still arrives in the test inbox.
 
 Following alone sends nothing. Delivery comes only from actions (automation rules), which the two flows above create for you.
 
