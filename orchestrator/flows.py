@@ -4,7 +4,8 @@ orchestrator (not in the agents).
 - pipeline: check -> (repair + recheck if broken) -> fan out summary +
   keyword + categorization in parallel.
 - spider:   spider finds/creates a module -> orchestrator hands it to the
-  scraper_create agent -> first pipeline run.
+  scraper_create agent -> fan out from the meeting it recorded, or a first
+  pipeline run when it recorded none.
 """
 from concurrent.futures import ThreadPoolExecutor
 
@@ -27,22 +28,30 @@ def _keywords_awaiting_summary(slug: str) -> bool:
             LIMIT 1""", (slug,)))
 
 
-def run_pipeline(slug: str, trigger: str = "manual") -> dict:
-    """Full per-module pipeline. Returns a summary dict of what ran."""
-    check = dispatch_agent("checking", slug=slug, trigger=trigger)
-    agenda_text = (check.get("data") or {}).get("agenda_text", "")
-    is_new = (check.get("data") or {}).get("is_new", False)
+def run_pipeline(slug: str, trigger: str = "manual", found: dict | None = None) -> dict:
+    """Full per-module pipeline. Returns a summary dict of what ran.
 
-    # Conditional: a config that has just broken gets one repair attempt.
-    # The repair fetches the agenda itself, so read its output rather than
-    # paying for a second full check. A module already marked 'broken' has
-    # had that attempt and failed it; repairing it again every cycle spends
-    # the same tokens on the same dead site.
-    if _module_health(slug) == "repairing":
-        repair = dispatch_agent("scraper_repair", slug=slug, trigger="repair")
-        rd = repair.get("data") or {}
-        agenda_text = rd.get("agenda_text", "") or agenda_text
-        is_new = rd.get("is_new", False) or is_new
+    `found` is scraper_create's output. When it recorded a new meeting it
+    stands in for the check: a check now would find that meeting already on
+    file, call it old news, and leave a new module without a summary until
+    its next agenda."""
+    if (found or {}).get("is_new"):
+        agenda_text, is_new = found.get("agenda_text", ""), True
+    else:
+        check = dispatch_agent("checking", slug=slug, trigger=trigger)
+        agenda_text = (check.get("data") or {}).get("agenda_text", "")
+        is_new = (check.get("data") or {}).get("is_new", False)
+
+        # Conditional: a config that has just broken gets one repair attempt.
+        # The repair fetches the agenda itself, so read its output rather than
+        # paying for a second full check. A module already marked 'broken' has
+        # had that attempt and failed it; repairing it again every cycle spends
+        # the same tokens on the same dead site.
+        if _module_health(slug) == "repairing":
+            repair = dispatch_agent("scraper_repair", slug=slug, trigger="repair")
+            rd = repair.get("data") or {}
+            agenda_text = rd.get("agenda_text", "") or agenda_text
+            is_new = rd.get("is_new", False) or is_new
 
     if len(agenda_text) < 50:
         return {"slug": slug, "summarized": False, "reason": "no agenda content"}
@@ -117,7 +126,7 @@ def run_spider(trigger: str = "manual") -> dict:
         return {"created": True, "slug": slug, "scraped": False}
 
     db.execute("UPDATE spider_candidate SET status='created' WHERE url=%s", (candidate_url,))
-    run_pipeline(slug, trigger="spider")
+    run_pipeline(slug, trigger="spider", found=scrape.get("data"))
     return {"created": True, "slug": slug, "scraped": True}
 
 
@@ -149,7 +158,7 @@ def run_spider_active(trigger: str = "manual") -> dict:
     if not scrape.get("ok"):
         db.execute("UPDATE module SET health='broken' WHERE slug=%s", (slug,))
         return {"active": True, "slug": slug, "scraped": False}
-    run_pipeline(slug, trigger="spider")
+    run_pipeline(slug, trigger="spider", found=scrape.get("data"))
     return {"active": True, "slug": slug, "scraped": True}
 
 

@@ -26,13 +26,12 @@ class _ScraperBase(BaseAgent):
         repair = self.mode == "repair"
 
         old_cfg = db.one("SELECT * FROM scrape_config WHERE module_id=%s", (mod["id"],))
+        start_url = tools.listing_url(old_cfg if repair else None, mod)
         if repair:
             db.execute("UPDATE module SET health='repairing' WHERE id=%s", (mod["id"],))
-            start_url = (old_cfg or {}).get("agenda_url") or mod["source_url"]
             self.emit("The agenda page broke. Re-crawling the site to locate the new agenda listing.",
                       "site.crawl", f"old URL: {start_url} no longer works")
         else:
-            start_url = mod["source_url"]
             self.emit(f"Crawling {mod['name']} to locate the agenda listing page.",
                       "site.crawl", f"crawling {start_url}")
 
@@ -55,7 +54,8 @@ class _ScraperBase(BaseAgent):
 
         repair_system = (
             "You are a scraper configuration agent. Given a website URL and HTML, "
-            "determine the best CSS selector to find agenda links. "
+            "determine the best CSS selector to find agenda links. agendaUrl is the page "
+            "that lists meetings, never a single meeting's document such as a PDF. "
             'Respond with JSON: {"agendaUrl":"...","linkSelector":"...","fileTypes":["pdf"],"hints":"..."}'
         )
         repair_user = (
@@ -65,6 +65,12 @@ class _ScraperBase(BaseAgent):
         model_name = self.model() or AGENT_MODEL
         cfg = complete_json(repair_system, repair_user, model=model_name)
         final_url = cfg.get("agendaUrl") or agenda_url
+        if tools.is_document(final_url):
+            # One meeting's PDF as the listing pins the module to that meeting
+            # forever. Keep the page the crawl found it on.
+            self.emit("The suggested agenda page is a single document, so the crawled page stays the listing.",
+                      "db.save_config", f"rejected {final_url}, keeping {agenda_url}")
+            final_url = agenda_url
 
         self.emit(f"Saving the {'repaired ' if repair else ''}scraping configuration"
                   f"{f' (updated URL: {final_url})' if final_url != mod['source_url'] else '.'}",
@@ -95,15 +101,15 @@ class _ScraperBase(BaseAgent):
         # signal alone mark a module healthy with nothing actually found.
         healthy = self._fetch_first_agenda(mod, slug, repair)
 
+        # Both modes set health here: after a new meeting the orchestrator fans
+        # out from this run's output without a check, so nothing else will.
+        db.execute(
+            "UPDATE module SET health=%s, last_checked=now() WHERE id=%s",
+            ("healthy" if healthy else "repairing", mod["id"]),
+        )
         if repair:
-            db.execute(
-                "UPDATE module SET health=%s, last_checked=now() WHERE id=%s",
-                ("healthy" if healthy else "repairing", mod["id"]),
-            )
             return "Module repaired and healthy" if healthy else "Repair incomplete — will retry"
-
         if not healthy:
-            db.execute("UPDATE module SET health='repairing' WHERE id=%s", (mod["id"],))
             return "Scrape config saved, but could not confirm a live agenda yet"
         return "Scrape config created and verified"
 

@@ -78,6 +78,33 @@ def _is_js_shell(html: str) -> bool:
             or "ng-app" in html or "data-reactroot" in html)
 
 
+_DOC_EXTS = (".pdf", ".doc", ".docx")
+_DOC_LITERAL = re.compile(r"""["']https?://[^"']+\.(?:pdf|docx?)(?:\?[^"']*)?["']""", re.I)
+
+
+def is_document(url: str | None) -> bool:
+    """A single file such as one meeting's agenda PDF, not a page of meetings."""
+    return bool(url) and urlparse(url).path.lower().endswith(_DOC_EXTS)
+
+
+def listing_url(cfg: dict | None, mod: dict) -> str:
+    """Where every tier starts looking for the latest meeting. Never a single
+    document: a PDF names one meeting forever, so a module that starts from
+    one reports that meeting on every check and never sees the next agenda.
+    Falls back to the site's root when both saved URLs are documents."""
+    for url in ((cfg or {}).get("agenda_url"), mod.get("source_url")):
+        if url and not is_document(url):
+            return url
+    u = urlparse((cfg or {}).get("agenda_url") or mod.get("source_url") or "")
+    return f"{u.scheme}://{u.netloc}/"
+
+
+def pins_a_document(script: str) -> bool:
+    """An extract script that hard-codes a document URL replays the same
+    meeting forever instead of finding the newest one on the listing."""
+    return bool(_DOC_LITERAL.search(script or ""))
+
+
 # -- web.search --------------------------------------------------
 def web_search(query: str, site: str = "") -> dict:
     if not query:
@@ -378,7 +405,9 @@ def agenda_find_latest(slug, emit=None, model=None):
         "SELECT sc.platform, sc.extract_script FROM scrape_config sc "
         "JOIN module m ON m.id = sc.module_id WHERE m.slug = %s", (slug,))
 
-    if row and row.get('extract_script'):
+    # A saved script pinned to one document is skipped, so the tiers below
+    # find the newest meeting and the browser run that follows replaces it.
+    if row and row.get('extract_script') and not pins_a_document(row['extract_script']):
         from .script_runner import run_extract_script
         try:
             script_result = run_extract_script(row['extract_script'])
@@ -418,14 +447,14 @@ def _static_find_latest(slug):
         if not row:
             return {'ok': False, 'detail': 'Module not found', 'data': {}}
         cfg = db.one("SELECT * FROM scrape_config WHERE module_id=%s", (row['id'],))
-        listing_url = (cfg or {}).get('agenda_url') or row['source_url']
+        start_url = listing_url(cfg, row)
 
         def has_meeting_links(html):
             low = (html or '').lower()
             return any(k in low for k in ('agenda', 'meeting', 'council', 'minutes', '/detail'))
 
         try:
-            res = _get(listing_url)
+            res = _get(start_url)
             list_html = res.text
             effective_url = res.url
         except Exception as e:
@@ -659,7 +688,7 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
         if not mod:
             return {"ok": False, "detail": "Module not found", "data": {}}
         cfg = db.one("SELECT * FROM scrape_config WHERE module_id=%s", (mod["id"],))
-        start_url = (cfg or {}).get("agenda_url") or mod["source_url"]
+        start_url = listing_url(cfg, mod)
 
         try:
             r = requests.post(f"{BROWSER_URL}/session", timeout=90)
@@ -961,6 +990,7 @@ def generate_extract_script(slug: str, trail: list, discovered: dict) -> str | N
         "GUIDELINES:\n"
         "- Reproduce the browser trail's logic: which URLs were visited, which link text was clicked to reach the meeting, which page contained the agenda/PDFs.\n"
         "- Start from `listingUrl` if available, otherwise the trail's first goto/url.\n"
+        "- Never hard-code the meeting URL or any PDF URL. Each run must find the newest meeting on the listing page; a script that returns a fixed document never sees the next agenda.\n"
         "- Use `_links_with_text` to find the meeting link by matching the trail's `meetingTitle` or the link text/reason from the trail steps.\n"
         "- Use `_find_pdfs` on the meeting/agenda page; if PDFs exist and `agendaText` is missing, try `_pdf_text` on the first/primary PDF.\n"
         "- If the page appears JS-rendered and `_get` returns empty/useless HTML, fall back to `render_html(url)`.\n"
@@ -976,18 +1006,18 @@ def generate_extract_script(slug: str, trail: list, discovered: dict) -> str | N
     # from the trail alone -- fetch the listing page it's meant to start from
     # and hand over actual hrefs/text. This is what turned the browser nav
     # loop's own hit rate around earlier in this same debugging session.
-    listing_url = discovered.get("listingUrl") or ""
+    listing = discovered.get("listingUrl") or ""
     sample_links = []
     listing_html = ""
-    if listing_url:
+    if listing:
         try:
-            res = _get(listing_url)
+            res = _get(listing)
             listing_html = res.text
             if _is_js_shell(listing_html):
-                rendered, _ = render_html(listing_url)
+                rendered, _ = render_html(listing)
                 if rendered:
                     listing_html = rendered
-            sample_links = _links_with_text(listing_html, listing_url)[:60]
+            sample_links = _links_with_text(listing_html, listing)[:60]
         except Exception as e:
             print(f"[generate_extract_script] listing fetch failed for slug={slug!r}: {e}")
 
@@ -996,7 +1026,7 @@ def generate_extract_script(slug: str, trail: list, discovered: dict) -> str | N
         f"navigation trail (JSON, what a browser did to find this manually):\n"
         f"{json.dumps(trail, ensure_ascii=False, indent=2)}\n\n"
         f"discovered data (JSON, what it found):\n{json.dumps(discovered, ensure_ascii=False, indent=2)}\n\n"
-        f"REAL links currently on the listing page ({listing_url!r}) -- write your matching "
+        f"REAL links currently on the listing page ({listing!r}) -- write your matching "
         f"logic against these actual hrefs/text, don't guess at HTML structure:\n"
         f"{json.dumps(sample_links, ensure_ascii=False, indent=2)}\n\n"
         "Write the `def extract():` function now. Respond with the Python code only -- no markdown, no fences, no explanation."
@@ -1017,6 +1047,9 @@ def generate_extract_script(slug: str, trail: list, discovered: dict) -> str | N
         script_text = fence_match.group(1).strip()
     if "def extract(" not in script_text:
         print(f"[generate_extract_script] no `def extract(` in response for slug={slug!r}")
+        return None
+    if pins_a_document(script_text):
+        print(f"[generate_extract_script] script hard-codes a document URL for slug={slug!r}")
         return None
 
     try:

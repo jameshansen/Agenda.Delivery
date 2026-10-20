@@ -68,21 +68,15 @@ overhead. So there are two tiers, tried in order:
 Once the browser tier succeeds, it doesn't throw that work away. It
 persists a **recipe** into `scrape_config`:
 
-- `agenda_url` — updated to the *entry point* it navigated from (not the
-  final PDF it landed on — a PDF is a dead end with no further links, so
-  storing that instead would strand the next attempt with nowhere to
-  navigate to)
+- `agenda_url`, updated to the *entry point* it navigated from, never the final PDF it landed on. A PDF is a dead end with no further links and names one meeting forever. Every tier starts from `listing_url`, which skips a saved `agenda_url` or `source_url` that is a document and falls back to the site's root, so this entry point is always a page.
 - `platform` — a best-effort guess at the site's software (eSCRIBE,
   Legistar, etc.), mostly for the admin panel's transparency
 - `nav_recipe` — the actual click trail it took, as readable JSON
   (`[{"action": "click", "ref": "e22", "reason": "..."}]`) — this is real
   diagnostic value: you can see *why* the agent clicked what it clicked
+- `extract_script`, a plain-HTTP `extract()` function the LLM writes from the click trail and the live links on the entry point, saved only if a dry run finds a dated meeting. A script that hard-codes a document URL is rejected when written and skipped when replayed, since it would report the same meeting on every check.
 
-Next time this module is checked, `agenda_find_latest` sees `platform` is
-already set and skips straight to the browser tier — no point re-trying the
-cheap path on a site already known to need it. If the recipe stops working
-(site redesign), the whole thing self-heals the same way it originally
-succeeded: escalate, re-navigate, re-learn.
+Next time this module is checked, `agenda_find_latest` runs the saved script first, with no browser and no LLM call. If there is none, or it no longer finds a dated meeting, a set `platform` sends it straight to the browser tier, with no point re-trying the cheap path on a site already known to need it. If the recipe stops working (site redesign), the whole thing self-heals the same way it originally succeeded: escalate, re-navigate, re-learn.
 
 ## Correctness is the whole point — never guess and call it success
 
@@ -98,6 +92,7 @@ shape, and are worth naming so the lesson doesn't get relearned:
   It isn't: archive pages trivially satisfy that. The real signal is a
   **specific extracted date** — only an actual individual meeting has one.
   (`_looks_like_a_real_meeting`)
+- **A document is not a listing.** The test council's first run took the homepage's "Latest agenda" PDF link as the listing, saved it as both `agenda_url` and `source_url`, and wrote an extract script with that PDF hard-coded. Every check after that found the same meeting and reported nothing new. The scraper now rejects a document `agendaUrl` and keeps the page it crawled, every tier starts from `listing_url`, and a script that hard-codes a document is never saved or replayed.
 - **A coarse pre-check should never block the real check.** `verify_selfcheck`
   is a cheap heuristic (does the page contain the words "agenda"/"meeting",
   is the HTTP status OK, etc.) — useful as a quick diagnostic, useless as a
@@ -141,7 +136,7 @@ until a future check or a code fix resolves it. It never gets marked
 
 | File | Role |
 |---|---|
-| `agents/base/agenda_shared/tools.py` | `_static_find_latest`, `browser_find_latest`, `agenda_find_latest` (the wrapper that ties tiers together), `_looks_like_a_real_meeting`, `site_crawl`, `web_search`, `verify_selfcheck`, `db_save_config` |
+| `agents/base/agenda_shared/tools.py` | `_static_find_latest`, `browser_find_latest`, `agenda_find_latest` (the wrapper that ties tiers together), `listing_url`, `generate_extract_script`, `_looks_like_a_real_meeting`, `site_crawl`, `web_search`, `verify_selfcheck`, `db_save_config` |
 | `browser/app.py` | The undetected-Chrome microservice: session lifecycle, frame-aware `state`/`click`/`type`/`links` |
 | `renderer/app.py` | The lightweight headless-Chromium renderer (JS execution only, no interaction) used by the static tier |
 | `agents/checking/agent_impl.py` | Recurring check: calls `agenda_find_latest`, records a new meeting if found, sets health from that result alone |

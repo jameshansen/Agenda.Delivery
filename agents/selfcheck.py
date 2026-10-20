@@ -2,8 +2,9 @@
 
     docker compose exec escalation python selfcheck.py
 
-Covers the two judgements that are easy to get quietly wrong: what counts as
-a coding error leaking into output, and when a mailing list is actually due.
+Covers the judgements that are easy to get quietly wrong: what counts as a
+coding error leaking into output, when a mailing list is actually due, and
+whether a module's listing is a page of meetings rather than one document.
 No DB, no network -- the module-level Postgres pool tolerates being unable to
 connect, it only fails when a query is run, and nothing here runs one.
 """
@@ -12,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, "/app")
 
-from agenda_shared import mailer                       # noqa: E402
+from agenda_shared import mailer, tools                # noqa: E402
 from agenda_shared.notify import (  # noqa: E402
     _month_target_day, _schedule_due, agenda_email, ensure_unsubscribe,
 )
@@ -154,7 +155,30 @@ def check_agenda_email():
     assert "Highlights" not in html
 
 
+def check_listing_never_a_document():
+    # What the test council's first run saved as both agenda_url and
+    # source_url, and the page that actually lists its meetings.
+    pdf = "https://testcouncil.agenda.delivery/meetings/3/2026-10-13-regular-council-agenda.pdf"
+    page = "https://testcouncil.agenda.delivery/meetings"
+    assert tools.is_document(pdf)
+    assert tools.is_document(pdf.replace(".pdf", ".PDF?download=1"))
+    assert not tools.is_document(page) and not tools.is_document(None)
+
+    assert tools.listing_url({"agenda_url": pdf}, {"source_url": page}) == page
+    assert tools.listing_url({"agenda_url": page}, {"source_url": pdf}) == page
+    assert tools.listing_url(None, {"source_url": page}) == page
+    root = tools.listing_url({"agenda_url": pdf}, {"source_url": pdf})
+    assert root == "https://testcouncil.agenda.delivery/", root
+
+    # The extract script that run saved, and one that finds the newest meeting.
+    assert tools.pins_a_document(f"def extract():\n    listing = '{pdf}'\n")
+    assert not tools.pins_a_document(
+        f"def extract():\n    html = _get('{page}').text\n"
+        f"    return [u for u in _find_pdfs(html, '{page}') if re.search(r'\\.pdf$', u)]\n")
+
+
 if __name__ == "__main__":
+    check_listing_never_a_document()
     check_error_detection()
     check_schedule()
     check_unsubscribe_guarantee()
