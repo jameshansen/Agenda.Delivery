@@ -1,6 +1,6 @@
 /**
- * Self-check for the pure UI-side logic: subscriber parsing and template
- * rendering. No DB, no server.
+ * Self-check for the pure UI-side logic: subscriber parsing, template
+ * rendering and the admin allow-list. No DB, no server.
  *
  *   npx tsx scripts/selfcheck.ts
  */
@@ -12,6 +12,7 @@ import {
   BUILTIN_FIELDS,
   missingRequiredFields,
 } from "../src/lib/mail-fields";
+import { isAdminEmail } from "../src/lib/admin";
 
 function checkParsing() {
   const { valid, invalid } = parseSubscribers(
@@ -105,9 +106,20 @@ function checkSchedule() {
   assert.equal(MONTH_DAYS.find((m) => m.value === "11")?.label, "the 11th");
 }
 
+function checkAdmin() {
+  const list = " Admin@Example.com, ops@example.com ,";
+  assert.equal(isAdminEmail("admin@example.com", list), true);
+  assert.equal(isAdminEmail("OPS@example.com", list), true);
+  assert.equal(isAdminEmail("someone@example.com", list), false);
+  assert.equal(isAdminEmail("", list), false); // trailing comma must not admit ""
+  assert.equal(isAdminEmail(null, list), false);
+  assert.equal(isAdminEmail("admin@example.com", ""), false); // unset = nobody
+}
+
 checkParsing();
 checkRendering();
 checkRequiredFields();
 checkEmptyImageStripping();
 checkSchedule();
+checkAdmin();
 console.log("selfcheck: all checks passed");

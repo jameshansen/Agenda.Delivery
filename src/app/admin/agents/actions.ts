@@ -1,11 +1,13 @@
 "use server";
 
 import { db } from "@/db";
+import { isAdmin } from "@/auth";
 import { agentConfig } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function saveAgentConfig(formData: FormData) {
+  if (!(await isAdmin())) throw new Error("Forbidden");
   const agent = formData.get("agent") as string;
   const displayName = formData.get("displayName") as string;
   const model = formData.get("model") as string;

@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { isAdmin } from "@/auth";
 
-export default function AdminLayout({
+// Each admin page checks too, since a layout doesn't re-render on client
+// navigation; this one keeps the admin nav off a non-admin's 404.
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  if (!(await isAdmin())) notFound();
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
       <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-900/80 backdrop-blur">

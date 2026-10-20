@@ -55,10 +55,10 @@ A revert does not undo what agenda.delivery already did with the meeting. The mo
 
 ## Running a check now
 
-The checking agent visits every module every six hours. To skip the wait after a release, queue the full pipeline (limited to 10 requests a minute per IP):
+The checking agent visits every module every six hours. To skip the wait after a release, queue the full pipeline on the server (the orchestrator's `/trigger` is not public, and `/api/agents/run` takes only a signed-in admin):
 
 ```bash
-curl -X POST https://agenda.delivery/api/agents/run -H "Content-Type: application/json" -d '{"agent":"full_pipeline","slug":"test-council"}'
+sudo -n docker exec agenda-orchestrator python -c "import requests; print(requests.post('http://localhost:8000/trigger', json={'flow': 'pipeline', 'slug': 'test-council'}).text)"
 ```
 
 Watch it run in the Agent activity rail on [/module/test-council](https://agenda.delivery/module/test-council) or on [/agents](https://agenda.delivery/agents). To see which runs happened, on the server:
@@ -72,7 +72,7 @@ sudo -n docker exec agenda-postgres psql -U agenda -d agenda -c "SELECT agent, s
 `sources.toml` lists the Test Council first, and a spider run takes the first source that is not yet a module. The spider is off on the schedule, so run it by hand:
 
 ```bash
-curl -X POST https://agenda.delivery/api/agents/run -H "Content-Type: application/json" -d '{"agent":"spider"}'
+sudo -n docker exec agenda-orchestrator python -c "import requests; print(requests.post('http://localhost:8000/trigger', json={'flow': 'spider'}).text)"
 ```
 
 The spider container reads `sources.toml` through a single-file mount, which keeps showing the old file after a `git pull` replaces it. Restart it after pulling a change to the registry:

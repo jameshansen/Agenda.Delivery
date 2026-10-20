@@ -133,4 +133,5 @@ Key production variables:
 | `AGENT_MODEL` | no | `glm-5.3-flash` | Model for agent reasoning |
 | `SUMMARY_MODEL` | no | `gemma4:31b` | Lighter model for summaries |
 | `NEXTAUTH_URL` | no | `http://localhost` | Canonical URL for callbacks |
+| `ADMIN_EMAILS` | no | `jameshansen.bc@gmail.com` | Comma-separated account emails allowed into `/admin` and `/api/agents/run`; empty locks everyone out |
 | `NGINX_PORT` | no | `80` | External nginx port |
