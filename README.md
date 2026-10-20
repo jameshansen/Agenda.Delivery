@@ -108,6 +108,8 @@ npm run test:pipeline               # Full pipeline: Check → Repair → Summar
 npm run test:scraper -- city-of-langley
 ```
 
+End-to-end checks run against a fictional council, the City of Testville at [testcouncil.agenda.delivery](https://testcouncil.agenda.delivery), which publishes a new agenda on demand. [TESTING.md](TESTING.md) walks through every feature with it.
+
 ## License
 
 [GNU General Public License v3.0 or later](LICENSE) (GPL-3.0-or-later).
