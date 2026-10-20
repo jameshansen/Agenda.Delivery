@@ -33,6 +33,16 @@
 # data pulled directly from the registry APIs.
 
 # ════════════════════════════════════════════════════════════
+# Test council (fictional, see TESTING.md). First in the file, so the
+# next spider run on a fresh install picks it up before any real council.
+# ════════════════════════════════════════════════════════════
+[[source]]
+name = "Test Council"
+url = "https://testcouncil.agenda.delivery"
+region = "Testville, British Columbia"
+country = "CA"
+
+# ════════════════════════════════════════════════════════════
 # Canada
 # ════════════════════════════════════════════════════════════
 

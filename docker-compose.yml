@@ -1,7 +1,8 @@
 # ─────────────────────────────────────────────────────────────
 # agenda.delivery — one-command deploy.
 #   docker compose up --build
-# Brings up: nginx, ui, orchestrator, 7 agent containers, redis, postgres.
+# Brings up: nginx, ui, orchestrator, 7 agent containers, redis, postgres,
+# and the test council.
 # ─────────────────────────────────────────────────────────────
 
 x-agent-env: &agent-env
@@ -154,6 +155,29 @@ services:
     extra_hosts:
       - "mailhost:host-gateway"
 
+  # ── Test council: a pretend council the agents watch (see TESTING.md) ──
+  # The host's Caddy serves testcouncil.agenda.delivery from the loopback port.
+  # It reaches Postgres only so a revert can drop agenda.delivery's record of
+  # the meeting it takes down.
+  testcouncil:
+    build:
+      context: .
+      dockerfile: testcouncil/Dockerfile
+    container_name: agenda-testcouncil
+    restart: unless-stopped
+    environment:
+      <<: *agent-env
+      TESTCOUNCIL_TOKEN: ${TESTCOUNCIL_TOKEN:-}
+      TESTCOUNCIL_RELEASE_DAYS: ${TESTCOUNCIL_RELEASE_DAYS:-7}
+    ports:
+      - "127.0.0.1:${TESTCOUNCIL_PORT:-8083}:8000"
+    volumes:
+      - agenda-testcouncil:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [agenda-net]
+
   # ── UI (Next.js, read-only DB reader) ──
   ui:
     build:
@@ -202,6 +226,7 @@ services:
 volumes:
   agenda-pgdata:
   agenda-redisdata:
+  agenda-testcouncil:
 
 networks:
   agenda-net:
