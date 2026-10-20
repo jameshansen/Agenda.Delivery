@@ -204,6 +204,8 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8000
       NODE_ENV: production
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
+      # Comma-separated account emails allowed into /admin and /api/agents/run.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-jameshansen.bc@gmail.com}
     extra_hosts:
       - "mailhost:host-gateway"
     depends_on:

@@ -65,23 +65,31 @@ export async function subscribe(input: {
   if (input.channel === "text" && !SMS_ENABLED) throw new Error("SMS is not enabled");
 
   const session = await auth();
-  const userId = session?.user?.id ?? null;
-
-  // Idempotent for signed-in users: don't stack duplicate rows (which would
-  // double-email) when someone subscribes again or picks "Create an Action".
-  if (userId) {
-    const [existing] = await db
-      .select({ id: subscriptions.id })
-      .from(subscriptions)
-      .where(and(eq(subscriptions.moduleId, m.id), eq(subscriptions.userId, userId), eq(subscriptions.channel, input.channel)))
-      .limit(1);
-    if (existing) return;
+  const userId = session?.user?.id;
+  if (!userId) throw new Error("Not signed in");
+  // Only a contact already verified on the account. Guests verify theirs
+  // through /signup, and verifyOtpAction records the subscription.
+  const own =
+    input.channel === "email"
+      ? session.user.email
+      : (session.user as { phone?: string | null }).phone;
+  if (!own || own.toLowerCase() !== input.contact.trim().toLowerCase()) {
+    throw new Error("That contact isn't verified on your account");
   }
+
+  // Idempotent: don't stack duplicate rows (which would double-email) when
+  // someone subscribes again or picks "Create an Action".
+  const [existing] = await db
+    .select({ id: subscriptions.id })
+    .from(subscriptions)
+    .where(and(eq(subscriptions.moduleId, m.id), eq(subscriptions.userId, userId), eq(subscriptions.channel, input.channel)))
+    .limit(1);
+  if (existing) return;
 
   await db.insert(subscriptions).values({
     moduleId: m.id,
     channel: input.channel,
-    contact: input.contact,
+    contact: own,
     userId,
   });
 }

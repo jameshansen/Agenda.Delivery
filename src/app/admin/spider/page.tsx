@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { isAdmin } from "@/auth";
 import { db } from "@/db";
 import { spiderCandidates, agentRuns } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
@@ -21,6 +23,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default async function AdminSpiderPage() {
+  if (!(await isAdmin())) notFound();
   const [candidates, runs] = await Promise.all([
     db.select().from(spiderCandidates).orderBy(desc(spiderCandidates.createdAt)).limit(100),
     db

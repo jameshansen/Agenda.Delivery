@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { isAdmin } from "@/auth";
 import { db } from "@/db";
 import { agentConfig } from "@/db/schema";
 import { asc } from "drizzle-orm";
@@ -6,6 +8,7 @@ import { saveAgentConfig } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function AdminAgentsPage() {
+  if (!(await isAdmin())) notFound();
   const rows = await db.select().from(agentConfig).orderBy(asc(agentConfig.agent));
 
   return (

@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { isAdmin } from "@/auth";
 import { db } from "@/db";
 import { modules, agentRuns, spiderCandidates } from "@/db/schema";
 import { sql, eq, desc, gte } from "drizzle-orm";
@@ -5,6 +7,7 @@ import { sql, eq, desc, gte } from "drizzle-orm";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboard() {
+  if (!(await isAdmin())) notFound();
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 

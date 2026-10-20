@@ -31,8 +31,8 @@ container; the pieces talk over one docker network.
 ## Who does what
 
 - **nginx** — the only container with a published port. Proxies `/` to the
-  UI and `/orchestrator/*` to the orchestrator (incl. the `/orchestrator/events`
-  SSE stream). Agents are **not** publicly reachable.
+  UI and `/orchestrator/events` (the SSE stream) to the orchestrator. The rest
+  of `/orchestrator/*` answers 404, and agents are **not** publicly reachable.
 - **ui** (`ui/`, Next.js/TypeScript) — a **reader**. It renders from Postgres
   and never calls agents. For live logs it subscribes to the orchestrator's
   SSE relay. Manual "run now" buttons POST to the orchestrator.

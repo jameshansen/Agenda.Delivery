@@ -3,6 +3,7 @@ import Google from "next-auth/providers/google";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/db";
 import { users, accounts, sessions, verificationTokens } from "@/db/schema";
+import { isAdminEmail } from "@/lib/admin";
 
 const IS_HTTPS = (process.env.NEXTAUTH_URL ?? process.env.AUTH_URL ?? "").startsWith("https://");
 
@@ -65,3 +66,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
 });
+
+/** True when the signed-in account's email is on ADMIN_EMAILS. */
+export async function isAdmin(): Promise<boolean> {
+  return isAdminEmail((await auth())?.user?.email);
+}

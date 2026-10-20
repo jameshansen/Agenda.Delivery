@@ -8,6 +8,8 @@
  * The UI never runs agents itself. This forwards to the orchestrator's
  * /trigger endpoint (Redis-backed queue) and returns immediately. Live
  * events stream via /api/agents/events?moduleId=...
+ *
+ * Admins only (ADMIN_EMAILS): every run spends LLM budget.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,6 +17,7 @@ import { db } from "@/db";
 import { modules } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { rateLimit, getRateLimitKey } from "@/lib/rate-limit";
+import { isAdmin } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +37,8 @@ function toJob(agent: string, slug: string | undefined, agendaText: string | und
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await isAdmin())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
   let body: { agent?: string; slug?: string; agendaText?: string; trigger?: string };
   try {
     body = await request.json();
