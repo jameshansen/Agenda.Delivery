@@ -98,7 +98,7 @@ sudo -n tail -n 80 /var/mail/agendatest
 ```
 
 ```bash
-sudo -n grep -E "^(Subject|From|DKIM-Signature|Content-Type):" /var/mail/agendatest
+sudo -n grep -E "^(Subject|From|Date|Message-ID|DKIM-Signature|Content-Type):" /var/mail/agendatest
 ```
 
 ```bash
@@ -163,7 +163,7 @@ Each check below names what to do and what should happen. "Release and check" me
 
 ### Following and email
 
-- **Notification email.** Release and check (or run `notify_now.py`), then read the test inbox. The subject is "Test Council: " followed by the meeting title. The HTML part is in the site's palette, with "New agenda", the council name, the meeting title, the module summary and up to five highlights, a "Read the agenda" button to the agenda PDF, a "See it on agenda.delivery" button to the module page, and a footer linking to the account page to manage actions. The plain-text part carries the same text and links, and the message has a `DKIM-Signature` for `d=agenda.delivery`.
+- **Notification email.** Release and check (or run `notify_now.py`), then read the test inbox. The subject is "Test Council: " followed by the meeting title. The HTML part is in the site's palette, with "New agenda", the council name, the meeting title, the module summary and up to five highlights, a "Read the agenda" button to the agenda PDF, a "See it on agenda.delivery" button to the module page, and a footer linking to the account page to manage actions. The plain-text part carries the same text and links, and the message has a `Date`, a `Message-ID` ending in `@agenda.delivery`, and a `DKIM-Signature` for `d=agenda.delivery`.
 - **Other content.** An email action set to "Agenda link" shows the two buttons under a one-line lead; "Full agenda text" and artifacts show their text as paragraphs, with markdown bold and bullets rendered rather than left as symbols. Highlights appear only with the AI summary.
 - **Signed-in follow.** On the module page, Subscribe, then "Send the summary to my email". The next release and check sends that account the email above.
 - **Guest follow.** Signed out, enter an address in the subscribe card, confirm the emailed code on /signup, and land back on the module page following it. An address like `agendatest+guest1@vmi1269820.contaboserver.net` makes a new account each time while its mail, the code included, still arrives in the test inbox.
