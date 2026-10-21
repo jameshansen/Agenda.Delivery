@@ -2,6 +2,7 @@
 // and delivers), or through an account's own SendGrid / SMTP credentials.
 // Never import from a "use client" file.
 import nodemailer from "nodemailer";
+import { isPublicHost } from "@/lib/public-host";
 
 const FROM = process.env.MAIL_FROM ?? "agenda.delivery <update@agenda.delivery>";
 
@@ -97,6 +98,9 @@ export async function sendHtmlMail(
 
     if (cfg.provider === "smtp") {
       if (!cfg.smtpHost) return { ok: false, error: "No SMTP host saved." };
+      if (!(await isPublicHost(cfg.smtpHost))) {
+        return { ok: false, error: "That SMTP host isn't reachable from the public internet." };
+      }
       const port = cfg.smtpPort || 587;
       const custom = nodemailer.createTransport({
         host: cfg.smtpHost,
@@ -114,6 +118,12 @@ export async function sendHtmlMail(
     await transport.sendMail({ from: fromHeader(cfg), to, subject, text, html });
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    // The raw error tells refused from silent from TLS-failed, which turns
+    // this form into a probe of whatever host and port it is given.
+    console.error("[sendHtmlMail] send failed:", err);
+    return {
+      ok: false,
+      error: "The mail server didn't accept the message. Check the host, port, security setting and login.",
+    };
   }
 }

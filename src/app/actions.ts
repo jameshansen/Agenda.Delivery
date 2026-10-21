@@ -35,6 +35,8 @@ import {
   toFieldKey,
 } from "@/lib/mail-fields";
 import { parseSubscribers, DEFAULT_SENDER_SUBSCRIBER_CAP } from "@/lib/mailing";
+import { followerCount } from "@/db/queries";
+import { isPublicHost } from "@/lib/public-host";
 import { EMAIL_RE } from "@/lib/contact";
 
 async function requireUserId(): Promise<string> {
@@ -96,7 +98,8 @@ export async function subscribe(input: {
 
 /** Send a one-time code to an email or phone number for signup/sign-in. */
 export async function requestOtpAction(input: { channel: "email" | "text"; contact: string }) {
-  const { channel, contact } = input;
+  const { channel } = input;
+  const contact = normalizeContact(channel, input.contact);
   if (channel === "text" && !SMS_ENABLED) {
     return { ok: false, error: "Text messages aren't available yet. Please use email." };
   }
@@ -117,6 +120,14 @@ export async function requestOtpAction(input: { channel: "email" | "text"; conta
 }
 
 /**
+ * One spelling per contact. Without it "Foo@x.com" and "foo@x.com" got
+ * separate accounts, codes and send limits.
+ */
+function normalizeContact(channel: "email" | "text", contact: string): string {
+  return channel === "email" ? contact.trim().toLowerCase() : contact.trim();
+}
+
+/**
  * Verify a submitted code, find-or-create the account, sign the user in
  * (database session, same shape Auth.js uses), and — if a module slug was
  * carried through from a guest subscribe attempt — create the subscription
@@ -128,7 +139,8 @@ export async function verifyOtpAction(input: {
   code: string;
   moduleSlug?: string;
 }) {
-  const { channel, contact, code, moduleSlug } = input;
+  const { channel, code, moduleSlug } = input;
+  const contact = normalizeContact(channel, input.contact);
   const rl = rateLimit(`otp-verify:${contact}`, 8, 10 * 60 * 1000);
   if (!rl.allowed) {
     return { ok: false, error: "Too many attempts. Try again in a few minutes." };
@@ -140,7 +152,7 @@ export async function verifyOtpAction(input: {
   const [existing] = await db
     .select({ id: users.id })
     .from(users)
-    .where(channel === "email" ? eq(users.email, contact) : eq(users.phone, contact))
+    .where(channel === "email" ? sql`lower(${users.email}) = ${contact}` : eq(users.phone, contact))
     .limit(1);
 
   let userId: string;
@@ -167,20 +179,7 @@ export async function verifyOtpAction(input: {
 
   if (moduleSlug) {
     const [m] = await db.select({ id: modules.id }).from(modules).where(eq(modules.slug, moduleSlug)).limit(1);
-    if (m) {
-      await db.insert(subscriptions).values({ moduleId: m.id, channel, contact, userId });
-      // Email delivery is action-driven; give an email subscriber the matching
-      // "Send to my email" action so they actually receive summaries.
-      if (channel === "email") {
-        await db.insert(automationRules).values({
-          userId,
-          moduleId: m.id,
-          trigger: "new_agenda",
-          contentMode: "summary",
-          actionKind: "email",
-        });
-      }
-    }
+    if (m) await followWithEmail(userId, m.id, channel, contact);
   }
 
   return { ok: true };
@@ -226,17 +225,27 @@ export async function generateApiKey(): Promise<{ key: string; prefix: string }>
 
 /* ---- Accounts redesign: targets, artifacts, rules, mailing lists ---- */
 
-function validUrl(u: string): boolean {
-  try { new URL(u); return true; } catch { return false; }
-}
-
-/** Reusable delivery target (script URL or Discord webhook). */
+/**
+ * Reusable delivery target (script URL or Discord webhook). The orchestrator
+ * POSTs to it from inside the Docker network, so it must be a public address.
+ */
 export async function createTarget(input: { kind: "script" | "discord"; name: string; url: string }) {
   const userId = await requireUserId();
   if (!input.name.trim()) return { ok: false, error: "Name can't be empty." };
-  if (!validUrl(input.url)) return { ok: false, error: "That doesn't look like a valid URL." };
+  let url: URL;
+  try {
+    url = new URL(input.url.trim());
+  } catch {
+    return { ok: false, error: "That doesn't look like a valid URL." };
+  }
+  if (input.kind === "discord" && !(url.protocol === "https:" && ["discord.com", "discordapp.com"].includes(url.hostname))) {
+    return { ok: false, error: "Use the webhook URL Discord gives you (https://discord.com/api/webhooks/…)." };
+  }
+  if (!["http:", "https:"].includes(url.protocol) || !(await isPublicHost(url.hostname))) {
+    return { ok: false, error: "That address isn't reachable from the public internet." };
+  }
   await db.insert(automationTargets).values({
-    userId, kind: input.kind, name: input.name.trim(), url: input.url.trim(),
+    userId, kind: input.kind, name: input.name.trim(), url: url.toString(),
   });
   revalidatePath("/account");
   return { ok: true };
@@ -284,6 +293,38 @@ export async function createRule(input: {
   if ((input.actionKind === "script" || input.actionKind === "discord") && !input.targetId) {
     return { ok: false, error: "Pick a target." };
   }
+  // Every id arrives from the browser, so each must be this account's own:
+  // otherwise a rule could queue into someone else's mailing list.
+  const [followed] = await db
+    .select({ id: subscriptions.id })
+    .from(subscriptions)
+    .where(and(eq(subscriptions.userId, userId), eq(subscriptions.moduleId, input.moduleId)))
+    .limit(1);
+  if (!followed) return { ok: false, error: "Follow this council before adding an action." };
+  if (input.artifactId) {
+    const [own] = await db
+      .select({ id: automationArtifacts.id })
+      .from(automationArtifacts)
+      .where(and(eq(automationArtifacts.id, input.artifactId), eq(automationArtifacts.userId, userId)))
+      .limit(1);
+    if (!own) return { ok: false, error: "Unknown artifact." };
+  }
+  if (input.actionKind === "script" || input.actionKind === "discord") {
+    const [own] = await db
+      .select({ id: automationTargets.id })
+      .from(automationTargets)
+      .where(and(eq(automationTargets.id, input.targetId!), eq(automationTargets.userId, userId)))
+      .limit(1);
+    if (!own) return { ok: false, error: "Unknown target." };
+  }
+  if (input.actionKind === "mailing_list") {
+    const [own] = await db
+      .select({ id: mailingLists.id })
+      .from(mailingLists)
+      .where(and(eq(mailingLists.id, input.listId!), eq(mailingLists.userId, userId)))
+      .limit(1);
+    if (!own) return { ok: false, error: "Unknown mailing list." };
+  }
   await db.insert(automationRules).values({
     userId,
     moduleId: input.moduleId,
@@ -313,31 +354,47 @@ export async function subscribeAndEmail(input: { slug: string }) {
   const [m] = await db.select({ id: modules.id }).from(modules).where(eq(modules.slug, input.slug)).limit(1);
   if (!m) return { ok: false, error: "Unknown module" };
 
-  await subscribe({ slug: input.slug, channel: "email", contact: email });
+  await followWithEmail(userId, m.id, "email", email);
+  revalidatePath("/account");
+  return { ok: true };
+}
 
-  const [existingRule] = await db
+/**
+ * Follow a module and, for email, add the default "email the AI summary on a
+ * new agenda" action, skipping whichever the account already has. Delivery
+ * is action-driven, so the action is what actually sends anything. Callers
+ * have verified `contact` belongs to the account.
+ */
+async function followWithEmail(userId: string, moduleId: string, channel: "email" | "text", contact: string) {
+  const [sub] = await db
+    .select({ id: subscriptions.id })
+    .from(subscriptions)
+    .where(and(eq(subscriptions.userId, userId), eq(subscriptions.moduleId, moduleId), eq(subscriptions.channel, channel)))
+    .limit(1);
+  if (!sub) await db.insert(subscriptions).values({ moduleId, channel, contact, userId });
+  if (channel !== "email") return;
+
+  const [rule] = await db
     .select({ id: automationRules.id })
     .from(automationRules)
     .where(
       and(
         eq(automationRules.userId, userId),
-        eq(automationRules.moduleId, m.id),
+        eq(automationRules.moduleId, moduleId),
         eq(automationRules.actionKind, "email"),
         eq(automationRules.trigger, "new_agenda"),
       ),
     )
     .limit(1);
-  if (!existingRule) {
+  if (!rule) {
     await db.insert(automationRules).values({
       userId,
-      moduleId: m.id,
+      moduleId,
       trigger: "new_agenda",
       contentMode: "summary",
       actionKind: "email",
     });
   }
-  revalidatePath("/account");
-  return { ok: true };
 }
 
 export async function deleteRule(input: { id: string }) {
@@ -361,6 +418,15 @@ export async function saveMailingList(input: {
 }) {
   const userId = await requireUserId();
   if (!input.name.trim()) return { ok: false, error: "Name can't be empty." };
+  if (input.templateId) {
+    // The account's own template or the shared default (user_id NULL).
+    const [tpl] = await db
+      .select({ id: emailTemplates.id })
+      .from(emailTemplates)
+      .where(and(eq(emailTemplates.id, input.templateId), sqlOr(eq(emailTemplates.userId, userId), isNull(emailTemplates.userId))))
+      .limit(1);
+    if (!tpl) return { ok: false, error: "Unknown template." };
+  }
 
   const values = {
     name: input.name.trim(),
@@ -376,7 +442,14 @@ export async function saveMailingList(input: {
 
   let listId = input.id;
   if (listId) {
-    await db.update(mailingLists).set(values).where(and(eq(mailingLists.id, listId), eq(mailingLists.userId, userId)));
+    // Scoped to the account; no row back means the list is someone else's,
+    // and its membership below must not be touched.
+    const [own] = await db
+      .update(mailingLists)
+      .set(values)
+      .where(and(eq(mailingLists.id, listId), eq(mailingLists.userId, userId)))
+      .returning({ id: mailingLists.id });
+    if (!own) return { ok: false, error: "Unknown mailing list." };
   } else {
     const [created] = await db.insert(mailingLists).values({ userId, ...values }).returning({ id: mailingLists.id });
     listId = created.id;
@@ -665,6 +738,9 @@ export async function saveSenderSettings(input: {
     if (input.provider === "smtp" && !input.smtpHost.trim()) {
       return { ok: false, error: "SMTP needs a host." };
     }
+    if (input.provider === "smtp" && !(await isPublicHost(input.smtpHost.trim()))) {
+      return { ok: false, error: "That SMTP host isn't reachable from the public internet." };
+    }
   }
 
   const existing = await loadSenderConfig(userId);
@@ -844,7 +920,7 @@ export async function searchModules(input: { query: string }) {
       slug: modules.slug,
       name: modules.name,
       region: modules.region,
-      followers: modules.followers,
+      followers: followerCount,
       health: modules.health,
     })
     .from(modules)
@@ -856,7 +932,7 @@ export async function searchModules(input: { query: string }) {
           )
         : eq(modules.isDemo, false),
     )
-    .orderBy(desc(modules.followers), asc(modules.name))
+    .orderBy(desc(followerCount), asc(modules.name))
     .limit(25);
 
   // Mark what they already follow so the dialog can show it instead of
