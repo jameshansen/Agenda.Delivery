@@ -4,6 +4,7 @@ Port of src/agents/tools.ts. Agents call these directly (the old TS agents
 called tools deterministically, not via an LLM tool-loop). Each returns a
 dict: {"ok": bool, "detail": str, "data": {...}}.
 """
+import base64
 import json
 import os
 import re
@@ -299,6 +300,39 @@ def _is_pdf_response(res) -> bool:
     return res.content[:5] == b"%PDF-" or "pdf" in res.headers.get("content-type", "").lower()
 
 
+def _pdf_bytes_text(content: bytes, max_pages: int = 20) -> tuple[str, int]:
+    """(text of the first max_pages, page count) of a PDF's bytes."""
+    from pypdf import PdfReader  # local import keeps container start fast
+    reader = PdfReader(BytesIO(content))
+    total = len(reader.pages)
+    return "\n".join((reader.pages[i].extract_text() or "") for i in range(min(max_pages, total))), total
+
+
+def _agenda_document(sid: str, url: str) -> tuple[str, int, str | None]:
+    """The found meeting's agenda text, read while the browser session that
+    found it is still open: a plain fetch first, then the session's own, whose
+    cookies get past portals that refuse a script. eSCRIBE answered
+    Coquitlam's agenda PDF with a 403, so the summary got a popup's text."""
+    try:
+        text, pages, pdf_url = _document_text(url)
+        if text.strip():
+            return text, pages, pdf_url
+    except Exception as e:
+        print(f"[browser_find_latest] plain fetch of {url} failed: {e}")
+    try:
+        got = requests.post(f"{BROWSER_URL}/session/{sid}/fetch", json={"url": url}, timeout=120).json()
+        if got.get("ok"):
+            content = base64.b64decode(got["b64"])
+            if content[:5] == b"%PDF-" or "pdf" in (got.get("type") or "").lower():
+                text, pages = _pdf_bytes_text(content)
+                return text, pages, url
+            return _html_to_text(content.decode("utf-8", "replace")), 0, None
+        print(f"[browser_find_latest] browser fetch of {url} failed: {got.get('error')}")
+    except Exception as e:
+        print(f"[browser_find_latest] browser fetch of {url} failed: {e}")
+    return "", 0, None
+
+
 def _document_text(url: str, max_pages: int = 20) -> tuple[str, int, str | None]:
     """(text, pages, pdf_url) for a meeting's agenda, read from the document
     itself: the PDF at `url`, else the PDF its page links to, else the page's
@@ -310,10 +344,7 @@ def _document_text(url: str, max_pages: int = 20) -> tuple[str, int, str | None]
     if not res.ok:
         return "", 0, None
     if _is_pdf_response(res):
-        from pypdf import PdfReader  # local import keeps container start fast
-        reader = PdfReader(BytesIO(res.content))
-        total = len(reader.pages)
-        text = "\n".join((reader.pages[i].extract_text() or "") for i in range(min(max_pages, total)))
+        text, total = _pdf_bytes_text(res.content, max_pages)
         return text, total, url
     html = res.text
     if _is_js_shell(html):
@@ -335,12 +366,7 @@ def _pdf_text(pdf_url: str, max_pages: int = 20) -> tuple[str, int]:
     res = _get(pdf_url, 120)
     if not res.ok:
         return "", 0
-    from pypdf import PdfReader  # local import keeps container start fast
-    reader = PdfReader(BytesIO(res.content))
-    total = len(reader.pages)
-    text = "\n".join((reader.pages[i].extract_text() or "")
-                     for i in range(min(max_pages, total)))
-    return text, total
+    return _pdf_bytes_text(res.content, max_pages)
 
 
 # -- agenda.find_latest (LLM-driven selection) ------------------
@@ -838,6 +864,7 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
         trail = []
         found = False
         picked_url = picked_title = picked_date = None
+        doc_text, pages, pdf_url = "", 0, None
         council_candidate = None  # {url, title}, from the final page's own elements
         state = {}
         try:
@@ -937,6 +964,8 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                     picked_title = decision.get("title")
                     picked_date = decision.get("date")
                     found = True
+                    # Now, while the session (and its cookies) is still open.
+                    doc_text, pages, pdf_url = _agenda_document(sid, picked_url)
                     # Cheap, no-extra-LLM-call scan of this final page's own
                     # elements for a distinct "council meeting" link -- mirrors
                     # what _static_find_latest asks the LLM to do explicitly,
@@ -992,11 +1021,6 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
         if not found:
             return {"ok": False, "detail": "Browser navigation exhausted without finding a specific agenda", "data": {"trail": trail}}
 
-        try:
-            doc_text, pages, pdf_url = _document_text(picked_url)
-        except Exception as e:
-            print(f"[browser_find_latest] document text skipped: {e}")
-            doc_text, pages, pdf_url = "", 0, None
         final_text = (doc_text or state.get("text", ""))[:12000]
 
         hay = (picked_url + (mod["source_url"] or "")).lower()

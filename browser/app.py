@@ -343,6 +343,45 @@ def goto(sid):
             return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# Runs in the page: fetch with the session's cookies and origin, return the
+# body base64-encoded (in chunks, since one String.fromCharCode call over a
+# whole PDF overflows the stack).
+_FETCH_JS = """
+const [url, done] = arguments;
+fetch(url, {credentials: 'include'}).then(async (r) => {
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  done({status: r.status, type: r.headers.get('content-type') || '', b64: btoa(bin)});
+}).catch((e) => done({error: String(e)}));
+"""
+
+
+@app.route("/session/<sid>/fetch", methods=["POST"])
+def fetch(sid):
+    """A document's bytes, fetched from inside the open page. Some portals
+    refuse a script's request for an agenda but serve the browser that has
+    been browsing them (eSCRIBE gave the agents a 403 for Coquitlam's)."""
+    with GLOBAL_LOCK:
+        entry = _touch(SESSIONS.get(sid))
+    if not entry:
+        return jsonify({"ok": False, "error": "no such session"}), 404
+    url = (request.get_json(silent=True) or {}).get("url")
+    if not _public(url):
+        return jsonify({"ok": False, "error": f"refused a non-public address: {url}"}), 400
+    with entry["lock"]:
+        try:
+            entry["driver"].set_script_timeout(90)
+            got = entry["driver"].execute_async_script(_FETCH_JS, url) or {}
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+    if got.get("error") or not (200 <= int(got.get("status") or 0) < 300):
+        return jsonify({"ok": False, "error": got.get("error") or f"HTTP {got.get('status')}"}), 502
+    return jsonify({"ok": True, "type": got.get("type", ""), "b64": got.get("b64", "")})
+
+
 @app.route("/session/<sid>/state", methods=["GET"])
 def state(sid):
     with GLOBAL_LOCK:
