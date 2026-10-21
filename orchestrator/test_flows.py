@@ -18,6 +18,9 @@ keywords_pending = False
 check_data: dict = {}
 repair_data: dict = {}
 scrape_data: dict = {}
+summary_data: dict = {}
+rate_limited: set = set()
+delivered: list[dict] = []
 
 
 def _stub():
@@ -38,25 +41,31 @@ def _stub():
     shared = types.ModuleType("agenda_shared")
     shared.db = db
     notify = types.ModuleType("agenda_shared.notify")
-    notify.run_automation_rules = lambda *a, **k: None
+    notify.run_automation_rules = lambda module_id, ctx: delivered.append(ctx)
     core = types.ModuleType("core")
+
+    class RateLimited(Exception):
+        pass
 
     def dispatch_agent(agent_type, **kw):
         calls.append(agent_type)
+        if agent_type in rate_limited:
+            raise RateLimited("OLLAMA_RATE_LIMITED: 429")
         data = {"checking": check_data, "scraper_repair": repair_data,
-                "scraper_create": scrape_data,
+                "scraper_create": scrape_data, "summary": summary_data,
                 "spider": {"slug": "testville", "created": True,
                            "candidate_url": "https://testville.test/"}}.get(agent_type, {})
         return {"ok": True, "result": "", "data": data, "run_id": "r1"}
 
     core.dispatch_agent = dispatch_agent
+    core.RateLimited = RateLimited
     for name, mod in (("agenda_shared", shared), ("agenda_shared.db", db),
                       ("agenda_shared.notify", notify), ("core", core)):
         sys.modules[name] = mod
 
 
 def main():
-    global health, keywords_pending, check_data, repair_data, scrape_data
+    global health, keywords_pending, check_data, repair_data, scrape_data, summary_data
     _stub()
     sys.path.insert(0, __file__.rsplit("/", 1)[0].rsplit("\\", 1)[0])
     import flows
@@ -123,7 +132,30 @@ def main():
     flows.run_spider()
     assert calls == ["spider", "scraper_create", "checking"], calls
 
-    print("ok — pipeline cost gates hold")
+    # Deliveries carry this run's summary; a declined summary sends none,
+    # rather than the previous agenda's.
+    check_data = {"agenda_text": agenda, "is_new": True}
+    for written in ("Council approved the budget.", None):
+        summary_data = {"summary": written} if written else {}
+        delivered.clear()
+        flows.run_pipeline("testville")
+        assert delivered[0]["summary"] == (written or ""), delivered
+
+    # A rate limit in the fan-out resumes as a new agenda: the meeting is on
+    # file by then, so a plain retry's check would call it old news.
+    rate_limited.add("summary")
+    try:
+        flows.run_pipeline("testville")
+        raise AssertionError("expected RateLimited")
+    except sys.modules["core"].RateLimited as e:
+        job = e.retry_job
+    rate_limited.clear()
+    assert job["found"] == {"is_new": True, "agenda_text": agenda}, job
+    calls.clear()
+    flows.FLOWS["pipeline"](job)
+    assert "checking" not in calls and "summary" in calls, calls
+
+    print("ok - pipeline cost gates hold")
 
 
 if __name__ == "__main__":

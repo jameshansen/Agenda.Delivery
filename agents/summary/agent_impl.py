@@ -124,6 +124,9 @@ class SummaryAgent(BaseAgent):
                            ORDER BY date DESC LIMIT 1)""",
             (summary_text, mod["id"]),
         )
+        # The orchestrator delivers this summary, not module.summary, which
+        # still holds the previous agenda's when this run declines or fails.
+        self.output["summary"] = summary_text
         self.emit("Wrote the general meeting summary.", "llm.summarize",
                   f"{len(summary_text)} chars written",
                   prompt=f"SYSTEM:\n{summary_system}\n\nUSER:\n{summary_user}", response=raw_summary,

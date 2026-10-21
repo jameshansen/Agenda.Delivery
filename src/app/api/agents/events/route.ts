@@ -45,9 +45,13 @@ export async function GET(request: NextRequest) {
       // a same-instant tie-breaker.
       try {
         const q = db.select().from(agentEvents);
+        // A module's history grows by every check forever, and the client
+        // keeps only the newest 50, so replay just those.
         const rows = moduleId
-          ? await q.where(eq(agentEvents.moduleId, moduleId))
-              .orderBy(asc(agentEvents.createdAt), asc(agentEvents.sort))
+          ? (
+              await q.where(eq(agentEvents.moduleId, moduleId))
+                .orderBy(desc(agentEvents.createdAt), desc(agentEvents.sort)).limit(50)
+            ).reverse()
           : runId
             ? await q.where(eq(agentEvents.runId, runId))
                 .orderBy(asc(agentEvents.createdAt), asc(agentEvents.sort))

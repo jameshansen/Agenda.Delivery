@@ -106,7 +106,7 @@ def _worker_loop() -> None:
                 # the real reset time; 15 min is a safe default floor. A monthly
                 # cap does not clear on that floor, and retrying against it
                 # spends the rest of the month re-reading the same refusal.
-                enqueue(job)
+                enqueue(getattr(e, "retry_job", None) or job)
                 pause(6 * 3600 if "monthly" in str(e).lower() else 15 * 60)
         except Exception as e:  # noqa: BLE001 — worker must never die
             print(f"[worker] error: {e}", flush=True)
@@ -170,12 +170,30 @@ _started = False
 _start_lock = threading.Lock()
 
 
+def _close_orphaned_runs() -> None:
+    """A run is closed by the dispatch that started it, so one in flight when
+    the orchestrator restarted stays 'running' forever. This process starts
+    none until its threads do, so anything still open is an orphan."""
+    try:
+        row = db.execute(
+            """WITH closed AS (
+                   UPDATE agent_run SET status = 'failed', finished_at = now(),
+                          error = 'Interrupted: the orchestrator restarted mid-run'
+                    WHERE status IN ('running', 'pending') RETURNING 1)
+               SELECT count(*) AS n FROM closed""")
+        if row and row["n"]:
+            print(f"[orchestrator] closed {row['n']} run(s) left open by a restart", flush=True)
+    except Exception as e:  # noqa: BLE001 -- never block startup on housekeeping
+        print(f"[orchestrator] closing orphaned runs failed: {e}", flush=True)
+
+
 def _start_background() -> None:
     global _started
     with _start_lock:
         if _started:
             return
         _started = True
+        _close_orphaned_runs()
         threading.Thread(target=_worker_loop, daemon=True, name="worker").start()
         threading.Thread(target=_scheduler_loop, daemon=True, name="scheduler").start()
         print("[orchestrator] worker + scheduler started", flush=True)
@@ -211,16 +229,24 @@ def events():
     def gen():
         p = redis_client().pubsub()
         p.subscribe(EVENTS_CHANNEL)
-        yield "retry: 3000\n\n"
-        for msg in p.listen():
-            if msg.get("type") != "message":
-                continue
-            ev = json.loads(msg["data"])
-            if run_id and ev.get("runId") != run_id:
-                continue
-            if module_id and ev.get("moduleId") != module_id:
-                continue
-            yield f"data: {json.dumps(ev)}\n\n"
+        try:
+            yield "retry: 3000\n\n"
+            while True:
+                msg = p.get_message(ignore_subscribe_messages=True, timeout=15)
+                if msg is None:
+                    # Only a write notices a client that has gone, and a
+                    # filtered stream can wait hours for a matching event.
+                    # Each stream holds one of the worker's eight threads.
+                    yield ": ping\n\n"
+                    continue
+                ev = json.loads(msg["data"])
+                if run_id and ev.get("runId") != run_id:
+                    continue
+                if module_id and ev.get("moduleId") != module_id:
+                    continue
+                yield f"data: {json.dumps(ev)}\n\n"
+        finally:
+            p.close()
 
     return Response(gen(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

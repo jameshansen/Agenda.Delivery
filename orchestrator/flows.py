@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from agenda_shared import db
 from agenda_shared.notify import run_automation_rules
-from core import dispatch_agent
+from core import RateLimited, dispatch_agent
 
 
 def _module_health(slug: str) -> str | None:
@@ -79,12 +79,19 @@ def run_pipeline(slug: str, trigger: str = "manual", found: dict | None = None) 
             "categorization": pool.submit(dispatch_agent, "categorization", slug=slug,
                                           trigger=trigger, inputs=inputs),
         }
-        results = {k: f.result() for k, f in futures.items()}
+        try:
+            results = {k: f.result() for k, f in futures.items()}
+        except RateLimited as e:
+            # The check has recorded the meeting, so a plain retry would call
+            # it old news and never summarize or deliver it. Resume from here.
+            e.retry_job = {"flow": "pipeline", "slug": slug, "trigger": trigger,
+                           "found": {"is_new": True, "agenda_text": agenda_text}}
+            raise
 
     # Only dispatch notifications on an actual new meeting, not every
     # routine check that finds nothing new.
     if is_new:
-        mod = db.one("SELECT id, name, slug, summary FROM module WHERE slug = %s", (slug,))
+        mod = db.one("SELECT id, name, slug FROM module WHERE slug = %s", (slug,))
         meeting = db.one(
             "SELECT title FROM meeting WHERE module_id = %s ORDER BY date DESC LIMIT 1",
             (mod["id"],),
@@ -99,7 +106,9 @@ def run_pipeline(slug: str, trigger: str = "manual", found: dict | None = None) 
                 "module_slug": mod["slug"],
                 "meeting_title": meeting["title"],
                 "agenda_text": agenda_text,
-                "summary": mod.get("summary") or "",
+                # This run's summary only: blank when it declined or failed,
+                # so no one is sent the previous agenda's summary.
+                "summary": (results["summary"].get("data") or {}).get("summary", ""),
             })
 
     return {"slug": slug, "summarized": True,
@@ -168,7 +177,8 @@ def run_single(agent_type: str, slug: str | None, trigger: str, inputs: dict) ->
 
 
 FLOWS = {
-    "pipeline": lambda job: run_pipeline(job["slug"], job.get("trigger", "manual")),
+    "pipeline": lambda job: run_pipeline(job["slug"], job.get("trigger", "manual"),
+                                         job.get("found")),
     "spider": lambda job: run_spider(job.get("trigger", "manual")),
     "spider_active": lambda job: run_spider_active(job.get("trigger", "manual")),
     "agent": lambda job: run_single(job["agent"], job.get("slug"),
