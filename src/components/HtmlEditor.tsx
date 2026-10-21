@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import DOMPurify from "dompurify";
 import { inputCls, labelCls, primaryBtnCls } from "@/components/account-ui";
 
 /**
@@ -50,7 +51,10 @@ export default function HtmlEditor({
   useEffect(() => {
     if (mode !== "design") return;
     const el = canvas.current;
-    if (el && el.innerHTML !== value) el.innerHTML = value;
+    // Sanitized: this canvas is part of the account page itself, so a pasted
+    // or generated template's onerror= or <script> would run with the
+    // account's session. (Previews are sandboxed iframes and need nothing.)
+    if (el && el.innerHTML !== value) el.innerHTML = DOMPurify.sanitize(value);
   }, [value, mode]);
 
   function exec(cmd: string, arg?: string) {
