@@ -49,8 +49,17 @@ class CategorizationAgent(BaseAgent):
         response_blob = json.dumps(result, indent=2)
 
         if latest:
-            db.execute("UPDATE meeting SET kind = %s WHERE id = %s",
-                       (kind, latest["id"]))
+            # A meeting the scraper could only call "Council Meeting" (its link
+            # said "HTML" or "Agenda Only") takes its kind as its name, so the
+            # list does not read "Council Meeting · Committee Meeting".
+            db.execute(
+                """UPDATE meeting SET kind = %s,
+                          title = CASE WHEN title = 'Council Meeting' AND NOT EXISTS (
+                                      SELECT 1 FROM meeting o WHERE o.module_id = meeting.module_id
+                                         AND o.date = meeting.date AND o.title = %s)
+                                  THEN %s ELSE title END
+                    WHERE id = %s""",
+                (kind, kind, kind, latest["id"]))
             self.emit(f'Categorized "{latest["title"]}" as "{kind}" (confidence {conf}).',
                       "llm.summarize", f"category: {kind}", prompt=prompt_blob, response=response_blob,
                       model=model_name)
