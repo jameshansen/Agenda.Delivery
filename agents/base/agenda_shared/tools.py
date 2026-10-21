@@ -434,8 +434,17 @@ def _pdf_text(pdf_url: str, max_pages: int = 20) -> tuple[str, int]:
 # -- agenda.find_latest (LLM-driven selection) ------------------
 _MONTH_RE = re.compile(r'\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b', re.IGNORECASE)
 _YEAR_RE = re.compile(r'\b20\d{2}\b')
-_MEETING_HINT = re.compile(r'agenda|meeting|minutes|hearing|council|committee|\.pdf|\b20\d{2}\b|'
-                           r'\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b', re.I)
+_STRONG_HINT = re.compile(r'agenda|minutes|\bpast\b|previous|archive|\.pdf|\b20\d{2}\b|'
+                          r'\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b', re.I)
+_WEAK_HINT = re.compile(r'meeting|hearing|council|committee', re.I)
+
+
+def _element_rank(e: dict) -> tuple:
+    """Sort key for the browser elements the nav loop shows the model."""
+    hay = f'{e.get("text") or ""} {e.get("href") or ""}'
+    return (0 if e.get("frame_path") else 1,
+            0 if _STRONG_HINT.search(hay) else 1 if _WEAK_HINT.search(hay) else 2,
+            0 if e.get("main") else 1)
 _NUM_DATE_RE = re.compile(r'\b20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}\b|\b\d{1,2}[-/.]\d{1,2}[-/.]20\d{2}\b')
 _A_RE = re.compile(r'<a\s+[^>]*href\s*=\s*["\']?([^"\'>\s]+)["\']?[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
 _TAG_RE = re.compile(r'<[^>]+>')
@@ -1020,17 +1029,16 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                 # page, and that page's own header/footer/nav chrome (dozens
                 # of links) would otherwise fill the whole cap before any
                 # iframe content is ever seen.
-                # Then anything that reads like a meeting: Kelowna's menus
-                # alone filled the 40 slots, so its meeting links never showed.
-                raw_elements = sorted(
-                    state.get("elements") or [],
-                    key=lambda e: (0 if e.get("frame_path") else 1,
-                                   0 if _MEETING_HINT.search(f'{e.get("text") or ""} {e.get("href") or ""}') else 1),
-                )
+                # Then what switches to or names a dated agenda (a Past meetings
+                # tab, an archive, a date), then other meeting words, each in
+                # the page's main region first. Kelowna's menus alone filled
+                # the slots, and DNV's many "council meetings" menu links kept
+                # its Past meetings button out of view.
+                raw_elements = sorted(state.get("elements") or [], key=_element_rank)
                 elements = [{"ref": e.get("ref"), "tag": e.get("tag"),
                              "text": (e.get("text") or "")[:200],
                              "href": (e.get("href") or "")[:200]}
-                            for e in raw_elements[:40]]
+                            for e in raw_elements[:60]]
                 today = date.today().isoformat()
                 system = ("You are driving a real browser to find a council's most recent meeting AGENDA that is "
                           "PUBLISHED (an upcoming meeting counts once its agenda document is posted; a scheduled "

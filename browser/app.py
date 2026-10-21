@@ -247,7 +247,10 @@ def _iter_frame_tree(driver, max_depth=3, max_total=40):
 
 _JS_STATE = r"""
 (function(){
-  var sels = ['a[href]','button','input','select','textarea','[role="button"]','[onclick]','[tabindex]'];
+  // summary and the aria/data toggles open accordions and tabs (Surrey's and
+  // Kelowna's meeting lists), whose click handlers no attribute shows.
+  var sels = ['a[href]','button','input','select','textarea','[role="button"]','[onclick]','[tabindex]',
+              'summary','[aria-expanded]','[aria-controls]','[data-toggle]','[data-bs-toggle]'];
   var set = new Set();
   var out = [];
   for (var si=0; si<sels.length; si++){
@@ -269,7 +272,8 @@ _JS_STATE = r"""
       if (text.length > 100) text = text.slice(0,100);
       var idx = out.length;
       el.setAttribute('data-agx', String(idx));
-      out.push({idx: idx, tag: tag, text: text, href: el.href || ''});
+      out.push({idx: idx, tag: tag, text: text, href: el.href || '',
+                main: !!el.closest('main, [role="main"], #main-content')});
     }
   }
   return out;
@@ -456,6 +460,7 @@ def state(sid):
                         "tag": item.get("tag"),
                         "text": item.get("text", ""),
                         "href": item.get("href", ""),
+                        "main": bool(item.get("main")),
                         "frame_path": list(frame_path),
                     })
                     frame_map[ref] = list(frame_path)

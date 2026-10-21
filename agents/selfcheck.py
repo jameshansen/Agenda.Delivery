@@ -323,6 +323,13 @@ def check_static_candidates():
                           "CITY OF SURREY\nADVISORY DESIGN PANEL AGENDA\nThursday, October 22, 2026") == "2026-10-22"
     assert tools._date_in("Regular Council Meeting - July 20, 2026", "") == "2026-07-20"
     assert tools._date_in("Council Meeting", "Call to order") is None
+    # DNV: its Past meetings button ahead of the menus that also say "council meetings".
+    els = [{"text": "Report a Problem", "href": "/report"},
+           {"text": "Council and Council meetings", "href": "/council-meetings"},
+           {"text": "Regular Council meeting", "href": "/regular-meeting-20261102", "main": True},
+           {"text": "Past meetings", "href": ""}]
+    assert [e["text"] for e in sorted(els, key=tools._element_rank)] == [
+        "Past meetings", "Regular Council meeting", "Council and Council meetings", "Report a Problem"]
 
 
 def check_portal_reader():
