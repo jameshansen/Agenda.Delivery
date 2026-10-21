@@ -25,9 +25,12 @@ export default function MeetingsList({ meetings }: { meetings: MeetingRow[] }) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{mt.title}</span>
-                  <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs text-ink-soft">
-                    {mt.kind}
-                  </span>
+                  {/* A meeting named for its kind would show it twice. */}
+                  {mt.kind.toLowerCase() !== mt.title.toLowerCase() && (
+                    <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs text-ink-soft">
+                      {mt.kind}
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm text-ink-soft">
                   {mt.date}
