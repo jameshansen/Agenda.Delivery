@@ -70,6 +70,15 @@ class CheckingAgent(BaseAgent):
             (mod["id"],),
         )
         is_new = latest is None or (mdate is not None and latest["date"] < _naive(mdate))
+        # Same title at the same agenda URL is the meeting already on file,
+        # whatever date was read this time. A generic title alone ("Regular
+        # Council Meeting") is not enough: every meeting shares it.
+        doc = (d.get("pdfLinks") or [None])[0] or d.get("meetingUrl")
+        if is_new and doc and db.one(
+                """SELECT 1 FROM meeting WHERE module_id = %s AND title = %s
+                     AND coalesce(pdf_url, meeting_url) = %s""",
+                (mod["id"], d.get("meetingTitle"), doc)):
+            is_new = False
         self.output["is_new"] = is_new  # orchestrator gates notify dispatch on this
 
         if is_new:

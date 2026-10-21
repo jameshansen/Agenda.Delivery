@@ -16,7 +16,8 @@ import requests
 from . import db
 from .llm import complete, complete_json, summarize
 from .settings import AGENT_MODEL
-from .textutil import date_from_title, looks_like_garbled_title, tidy_title
+from .textutil import (date_from_title, is_link_wording, looks_like_garbled_title,
+                       names_no_meeting, tidy_title)
 
 RENDERER_URL = os.environ.get("RENDERER_URL", "http://renderer:8000")
 BROWSER_URL = os.environ.get("BROWSER_URL", "http://browser:8000")
@@ -384,21 +385,46 @@ def _looks_like_a_real_meeting(result: dict) -> bool:
 
 def agenda_find_latest(slug, emit=None, model=None):
     """Find the latest agenda (see _agenda_find_latest), then settle each
-    meeting's title and date, whichever tier found them. Titles lose link
-    wording, since readers see them in lists and subjects. A date the title
-    spells out beats the model's reading of the page, and every date is cut
-    to the day: meeting rows are unique on (module, date, title), so a time
-    of day that varies between checks recorded the same meeting again."""
+    meeting's title and date, whichever tier found them. A find that is a
+    listing, calendar or page chrome is dropped. Titles lose link wording,
+    since readers see them in lists and subjects. A date the title spells
+    out beats the model's reading of the page, and every date is cut to the
+    day: meeting rows are unique on (module, date, title), so a time of day
+    that varies between checks recorded the same meeting again."""
     found = _agenda_find_latest(slug, emit=emit, model=model)
     data = found.get('data') or {}
+    listing = _bare_url(data.get('listingUrl'))
+    bogus = set()  # ids of the finds that are not meetings
     for meeting in (data, data.get('additionalMeeting') or {}):
-        if meeting.get('meetingTitle'):
-            meeting['meetingTitle'] = tidy_title(meeting['meetingTitle'])
-        spelled = date_from_title(meeting.get('meetingTitle') or '')
+        if not meeting:
+            continue
+        title = tidy_title(meeting.get('meetingTitle') or '')
+        # A listing page, calendar or page chrome is no meeting, whatever date
+        # it was given; on prod these were recorded again on every check.
+        if names_no_meeting(title) or (
+                listing and _bare_url(meeting.get('meetingUrl')) == listing
+                and not (meeting.get('pdfLinks') or meeting.get('pdfUrl'))):
+            bogus.add(id(meeting))
+        # Format-link wording ("HTML", "Agenda Only") names no meeting, but the
+        # find is real: give it a name a reader can use.
+        meeting['meetingTitle'] = ('Council Meeting' if is_link_wording(title) and id(meeting) not in bogus
+                                   else title)
+        spelled = date_from_title(meeting['meetingTitle'])
         given = re.match(r'\d{4}-\d{2}-\d{2}', str(meeting.get('meetingDate') or ''))
         if spelled or given:
             meeting['meetingDate'] = spelled.isoformat() if spelled else given.group(0)
+    if id(data.get('additionalMeeting')) in bogus:
+        data['additionalMeeting'] = None
+    if found.get('ok') and id(data) in bogus:
+        return {'ok': False, 'data': {},
+                'detail': (f'Found "{data.get("meetingTitle")}" at {data.get("meetingUrl")}, '
+                           'a listing or page chrome rather than one meeting')}
     return found
+
+
+def _bare_url(url) -> str:
+    """A URL without its fragment or trailing slash, for comparing pages."""
+    return str(url or '').split('#')[0].rstrip('/').lower()
 
 
 def _agenda_find_latest(slug, emit=None, model=None):
@@ -674,6 +700,13 @@ def record_additional_council_meeting(module_id: str, additional: dict | None, e
     try:
         mdate = datetime.fromisoformat(str(additional.get("meetingDate") or ""))
     except ValueError:
+        return
+    # This is an older meeting by construction, so its agenda document already
+    # on file means it is recorded, whatever the title was worded as this time
+    # (Township of Langley's July 27 meeting was recorded under four).
+    doc = additional.get("pdfUrl") or additional.get("meetingUrl")
+    if doc and db.one("SELECT 1 FROM meeting WHERE module_id = %s AND coalesce(pdf_url, meeting_url) = %s",
+                      (module_id, doc)):
         return
     db.execute(
         """INSERT INTO meeting (module_id, date, title, kind, pages, pdf_url, meeting_url)

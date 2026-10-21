@@ -84,6 +84,38 @@ def date_from_title(title: str):
     return None
 
 
+# Words a format link is made of ("HTML", "Agenda Only", "Agenda PDF"),
+# which on prod became the titles of real meetings.
+_LINK_WORDS = {"agenda", "agendas", "html", "pdf", "only", "merged", "package", "packet",
+               "download", "view", "open", "file", "document", "council", "meeting", "meetings"}
+_PAGE_CHROME = {"skip to main content", "skip to content", "main content", "menu", "home"}
+
+
+def names_no_meeting(title: str) -> bool:
+    """A title that is page chrome ("Skip to main content") or names a listing,
+    calendar or schedule rather than one meeting ("Council Meeting Agendas",
+    "2026 Council Meeting Schedule"). Such finds were recorded as meetings on
+    every check. A date in the title means it is about one meeting after all,
+    and so does a document under a plural heading ("Council Meetings -
+    Agenda PDF")."""
+    low = (title or "").strip().lower()
+    if low in _PAGE_CHROME:
+        return True
+    if date_from_title(low) is not None:
+        return False
+    if re.search(r"\b(calendar|schedule)\b", low):
+        return True
+    return (re.search(r"\b(agendas|meetings)\b", low) is not None
+            and re.search(r"\b(pdf|html)\b", low) is None)
+
+
+def is_link_wording(title: str) -> bool:
+    """A title made only of format-link words: it names no meeting, though
+    the find may be a real one."""
+    words = re.findall(r"[a-z]+", (title or "").lower())
+    return not words or set(words) <= _LINK_WORDS
+
+
 def tidy_title(title: str) -> str:
     """Drop the link wording a scraped title picks up from the page: a file
     type or size tag and a leading or trailing "Agenda -". Seen on the test

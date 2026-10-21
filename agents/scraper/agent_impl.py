@@ -158,9 +158,18 @@ class _ScraperBase(BaseAgent):
             return False
         d = found["data"]
         title = d.get("meetingTitle")
-        if title and title != "Council Meeting":
+        # agenda_find_latest only returns a dated, specific meeting, and names
+        # one whose link said nothing ("HTML") "Council Meeting", so that title
+        # is a real find now, not the old no-title fallback.
+        if title:
             mdate = _parse_dt(d.get("meetingDate")) or _now()
-            inserted = db.execute(
+            doc = (d.get("pdfLinks") or [None])[0] or d.get("meetingUrl")
+            # Each repair finds the latest meeting again, often under reworded
+            # titles, which recorded one meeting dozens of times.
+            on_file = doc and db.one(
+                "SELECT 1 FROM meeting WHERE module_id = %s AND coalesce(pdf_url, meeting_url) = %s",
+                (mod["id"], doc))
+            inserted = None if on_file else db.execute(
                 """INSERT INTO meeting (module_id, date, title, kind, pages, pdf_url, meeting_url)
                    VALUES (%s,%s,%s,'Council Meeting',%s,%s,%s)
                    ON CONFLICT (module_id, date, title) DO NOTHING

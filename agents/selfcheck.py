@@ -14,7 +14,9 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, "/app")
 
 from agenda_shared import mailer, tools                # noqa: E402
-from agenda_shared.textutil import date_from_title, tidy_title  # noqa: E402
+from agenda_shared.textutil import (  # noqa: E402
+    date_from_title, is_link_wording, names_no_meeting, tidy_title,
+)
 from agenda_shared.notify import (  # noqa: E402
     _month_target_day, _schedule_due, agenda_email, ensure_unsubscribe,
 )
@@ -201,6 +203,25 @@ def check_date_from_title():
         assert date_from_title(none) is None, none
 
 
+def check_meeting_titles():
+    # Recorded on prod as meetings, again on every check: none is one meeting.
+    for listing in ("Skip to main content", "Council Meeting Agendas", "2026 Council Meeting Schedule",
+                    "Council meetings, agendas, minutes, and webcasts",
+                    "2026 Council Meetings, Public Hearings, Committee-of-the-Whole Calendar"):
+        assert names_no_meeting(listing), listing
+    # One meeting each, including a listing-like word next to a real date.
+    for meeting in ("REGULAR COUNCIL MEETING", "Council Meeting October 05, 2026 Agenda",
+                    "Agenda Only", "HTML", "Public Hearing Meetings - September 1, 2026",
+                    "Agenda PDF - Council Meetings", "Council Meetings - Agenda PDF"):
+        assert not names_no_meeting(meeting), meeting
+    # Format-link wording names no meeting, though the find was real.
+    for wording in ("HTML", "Agenda Only", "Agenda PDF", "Council", "Agenda (Merged)",
+                    "Council Meetings Agenda PDF", ""):
+        assert is_link_wording(wording), wording
+    for named in ("REGULAR COUNCIL MEETING", "Public Hearing", "Committee of the Whole"):
+        assert not is_link_wording(named), named
+
+
 def check_tidy_title():
     # What the test council's listing turned into an email subject.
     assert tidy_title("Agenda (PDF) - Regular Council Meeting, Wednesday, October 21, 2026")         == "Regular Council Meeting, Wednesday, October 21, 2026"
@@ -217,6 +238,7 @@ def check_tidy_title():
 if __name__ == "__main__":
     check_listing_never_a_document()
     check_tidy_title()
+    check_meeting_titles()
     check_date_from_title()
     check_public_host()
     check_error_detection()
