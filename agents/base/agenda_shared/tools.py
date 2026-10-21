@@ -922,6 +922,9 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                           "the outer page, so don't click the same agenda link twice waiting for confirmation. "
                           "As soon as elements or pdf_links_seen show a specific dated meeting's Agenda (HTML or "
                           "PDF, not Minutes) link, respond done immediately with that href as url. "
+                          "It must be one meeting's agenda, never correspondence, a notice, a schedule or a "
+                          "folder of documents. Portals often list a category's meetings oldest first, so "
+                          "compare the dates across the whole list before calling one the most recent. "
                           "You see visible_text, elements, and pdf_links_seen. "
                           "Respond JSON only: "
                           '{"action":"click"|"goto"|"type"|"done"|"fail","ref":str|null,"url":str|null,'
