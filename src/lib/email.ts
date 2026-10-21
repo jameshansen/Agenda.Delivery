@@ -17,8 +17,8 @@ const transport = nodemailer.createTransport({
   ignoreTLS: true,
 });
 
-export async function sendMail(to: string, subject: string, text: string): Promise<void> {
-  await transport.sendMail({ from: FROM, to, subject, text });
+export async function sendMail(to: string, subject: string, text: string, html?: string): Promise<void> {
+  await transport.sendMail({ from: FROM, to, subject, text, html });
 }
 
 /** An account's sending configuration (sender_settings row shape). */
