@@ -243,7 +243,7 @@ curl -X POST https://agenda.delivery/api/site-error -H "Content-Type: applicatio
 sudo -n docker exec agenda-orchestrator python -c "import requests; print(requests.post('http://localhost:8000/trigger', json={'flow': 'agent', 'agent': 'escalation'}).text)"
 ```
 
-Each issue is emailed once, so change the message to test again. A module left broken for over 24 hours is reported the same way.
+Each issue is emailed once, so change the message to test again. An issue whose email failed (the relay down, say) goes out with the next sweep. A sweep reports at most ten site-error groups, and a module left broken for over a day is reported once a week while it stays broken. Output the model judges not to be an error is remembered and not judged again.
 
 ### Rolling back
 
