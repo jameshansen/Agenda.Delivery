@@ -82,7 +82,7 @@ persists a **recipe** into `scrape_config`:
   diagnostic value: you can see *why* the agent clicked what it clicked
 - `extract_script`, a plain-HTTP `extract()` function the LLM writes from the click trail and the live links on the entry point, saved only if a dry run finds a dated meeting. A script that hard-codes a document URL is rejected when written and skipped when replayed, since it would report the same meeting on every check.
 
-Next time this module is checked, `agenda_find_latest` runs the saved script first, with no browser and no LLM call. If there is none, or it no longer finds a dated meeting, the static tier runs, and the browser tier only when the static find is not one dated agenda (for a module with a `platform` set, one with at least 200 characters of agenda text). If the recipe stops working (site redesign), the whole thing self-heals the same way it originally succeeded: escalate, re-navigate, re-learn.
+Next time this module is checked, `agenda_find_latest` runs the saved script first, with no browser and no LLM call. If there is none, or it no longer finds a dated meeting, the static tier runs, and the browser tier only when the static find is not one dated agenda with at least 200 characters of agenda text. A meeting the static tier also names as the last regular council meeting is recorded only when it is not in the future, since nothing checked that its agenda is out. If the recipe stops working (site redesign), the whole thing self-heals the same way it originally succeeded: escalate, re-navigate, re-learn.
 
 ## Correctness is the whole point — never guess and call it success
 

@@ -642,16 +642,15 @@ def _agenda_find_latest(slug, emit=None, model=None):
             print(f"[agenda_find_latest] saved script for {slug!r} no longer works "
                   f"({script_result.get('detail')}), falling back")
 
-    # Static first for every module, platform-tagged ones included: one model
-    # call against the browser tier's eight, and on eSCRIBE it read the
-    # listing's dates better (City of Langley's newest was October 19, where
-    # the browser settled on July 27). Its find must be one agenda; for a
-    # tagged module it must also have text to summarize, or the browser goes.
+    # Static first for every module: one model call against the browser
+    # tier's eight. Its find must be one agenda with text to summarize, or the
+    # browser goes. DNV's static find was a committee page with 92 characters
+    # and no PDF; its agendas sit behind a "Past meetings" tab.
     result = _static_find_latest(slug)
     data = result.get('data') or {}
     if (_looks_like_a_real_meeting(result)
             and not _not_one_agenda(data, _bare_url(data.get('listingUrl')))
-            and (not (row and row.get('platform')) or len(data.get('agendaText') or '') >= 200)):
+            and len(data.get('agendaText') or '') >= 200):
         return result
     browser_result = browser_find_latest(slug, emit=emit, model=model)
     if browser_result.get('ok'):
@@ -903,6 +902,11 @@ def record_additional_council_meeting(module_id: str, additional: dict | None, e
     try:
         mdate = datetime.fromisoformat(str(additional.get("meetingDate") or ""))
     except ValueError:
+        return
+    # Nothing checked that a later meeting's agenda is out. On DNV it was the
+    # scheduled November 2 meeting, and as the newest row it would have kept
+    # that meeting's agenda from ever counting as new.
+    if mdate.date() > date.today():
         return
     # This is an older meeting by construction, so its agenda document already
     # on file means it is recorded, whatever the title was worded as this time
