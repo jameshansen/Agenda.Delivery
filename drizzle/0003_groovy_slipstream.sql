@@ -1,1 +1,0 @@
-ALTER TABLE "meeting" ADD COLUMN "meeting_url" text;

@@ -49,18 +49,14 @@ docker compose up -d --build
 
 Open http://localhost.
 
-`db/schema.sql` and `db/seed.sql` run only when the database is first created. After pulling a schema change, apply the schema to the existing database; it is safe to re-run:
-
-```bash
-docker exec -i agenda-postgres psql -U agenda -d agenda -f - < db/schema.sql
-```
+`db/schema.sql` is the schema of record. Postgres applies it with `db/seed.sql` when the database is first created, and the `schema` service re-applies it on every `docker compose up`, so an existing database picks up schema changes.
 
 **Google sign-in** is optional: add `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` to
 `.env` (redirect URI `http://localhost/api/auth/callback/google`). Without
 them, browsing, search, module pages, and email/text subscribe all still work;
 only the account area needs sign-in.
 
-`db/schema.sql` is the schema of record. The Drizzle migrations in `drizzle/` stop before the automation and mailing tables, so `db:migrate` builds an incomplete database; `db:generate` and `db:studio` still work against a running one.
+`npm run db:studio` opens Drizzle Studio on the running database.
 
 ## Roadmap
 
@@ -82,10 +78,10 @@ Building front-to-back: UI and site first, backend after.
 - **Phase 5 — Data & storage:** S3 historical store, high compression, PDF image stripping; data-engineering pipeline.
 - **Phase 6 — Notifications:** email + Twilio SMS + RSS.
 - **Phase 7 — Infra & observability:** Docker/compose/nginx, Kubernetes, AWS, Datadog/OpenTelemetry/Prometheus/Grafana, CI/CD.
-  ✅ Docker (multi-stage standalone), production docker-compose (app+Postgres+nginx),
-  nginx reverse proxy (rate-limiting, gzip, SSE-aware, security headers), GitHub Actions
-  CI/CD (lint+typecheck+build+test on PR, auto-deploy on main). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- **Phase 8 — Admin panel:** Password-protected admin UI for manually triggering agent
+  ✅ Docker (multi-stage standalone), one compose stack (UI, orchestrator, agents, Postgres, Redis, nginx),
+  nginx reverse proxy (rate-limiting, gzip, security headers), GitHub Actions CI on master
+  (lint, type-check, build, schema, self-checks). See [DEPLOYMENT.md](DEPLOYMENT.md).
+- **Phase 8 — Admin panel:** Admin UI, open to the signed-in accounts in `ADMIN_EMAILS`, for manually triggering agent
   runs, managing modules, viewing agent run history, editing scrape configs, approving
   spider candidates, and monitoring system health. Includes a cron/scheduler to run
   agents on a fixed cadence (checking agent every 6h, spider daily).

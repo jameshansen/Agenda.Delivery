@@ -1,1 +1,0 @@
-ALTER TABLE "meeting" ADD COLUMN "pdf_url" text;

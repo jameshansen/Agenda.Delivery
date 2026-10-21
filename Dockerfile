@@ -40,15 +40,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Drizzle migration files + config (for `npm run db:migrate` in deploy)
-COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
-COPY --from=builder --chown=nextjs:nodejs /app/drizzle.config.ts ./drizzle.config.ts
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
-# drizzle-kit + tsx + dotenv are needed for migrations
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules/drizzle-kit ./node_modules/drizzle-kit
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules/tsx ./node_modules/tsx
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules/dotenv ./node_modules/dotenv
-
 USER nextjs
 
 EXPOSE 3000

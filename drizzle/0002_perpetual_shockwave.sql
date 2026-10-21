@@ -1,1 +1,0 @@
-CREATE INDEX "meeting_module_date_idx" ON "meeting" USING btree ("module_id","date");
