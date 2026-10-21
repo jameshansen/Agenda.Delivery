@@ -29,9 +29,14 @@ _REFUSAL_MARKERS = (
 )
 
 
+# A summary of the web page instead of the meeting: Burnaby's began "This
+# page serves as the central hub for the City of Burnaby's meetings...".
+_PAGE_OPENERS = ("this page", "this website", "this site", "this portal", "the page", "the website")
+
+
 def _looks_like_a_real_summary(text: str) -> bool:
-    low = text.lower()
-    return not any(marker in low for marker in _REFUSAL_MARKERS)
+    low = text.lower().strip()
+    return not (any(marker in low for marker in _REFUSAL_MARKERS) or low.startswith(_PAGE_OPENERS))
 
 
 class SummaryAgent(BaseAgent):
