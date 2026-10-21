@@ -16,7 +16,7 @@ import requests
 from . import db
 from .llm import complete, complete_json, summarize
 from .settings import AGENT_MODEL
-from .textutil import looks_like_garbled_title, tidy_title
+from .textutil import date_from_title, looks_like_garbled_title, tidy_title
 
 RENDERER_URL = os.environ.get("RENDERER_URL", "http://renderer:8000")
 BROWSER_URL = os.environ.get("BROWSER_URL", "http://browser:8000")
@@ -383,13 +383,21 @@ def _looks_like_a_real_meeting(result: dict) -> bool:
 
 
 def agenda_find_latest(slug, emit=None, model=None):
-    """Find the latest agenda (see _agenda_find_latest) and tidy the meeting
-    titles, whichever tier found them: readers see them in lists and subjects."""
+    """Find the latest agenda (see _agenda_find_latest), then settle each
+    meeting's title and date, whichever tier found them. Titles lose link
+    wording, since readers see them in lists and subjects. A date the title
+    spells out beats the model's reading of the page, and every date is cut
+    to the day: meeting rows are unique on (module, date, title), so a time
+    of day that varies between checks recorded the same meeting again."""
     found = _agenda_find_latest(slug, emit=emit, model=model)
     data = found.get('data') or {}
     for meeting in (data, data.get('additionalMeeting') or {}):
         if meeting.get('meetingTitle'):
             meeting['meetingTitle'] = tidy_title(meeting['meetingTitle'])
+        spelled = date_from_title(meeting.get('meetingTitle') or '')
+        given = re.match(r'\d{4}-\d{2}-\d{2}', str(meeting.get('meetingDate') or ''))
+        if spelled or given:
+            meeting['meetingDate'] = spelled.isoformat() if spelled else given.group(0)
     return found
 
 
@@ -659,15 +667,14 @@ def record_additional_council_meeting(module_id: str, additional: dict | None, e
     containers, which cannot import each other's code."""
     if not additional or not additional.get("meetingTitle"):
         return
-    mdate_iso = additional.get("meetingDate")
-    if mdate_iso:
-        try:
-            mdate = datetime.fromisoformat(mdate_iso.replace("Z", "+00:00"))
-            mdate = mdate.astimezone(timezone.utc).replace(tzinfo=None)
-        except ValueError:
-            mdate = datetime.now(timezone.utc).replace(tzinfo=None)
-    else:
-        mdate = datetime.now(timezone.utc).replace(tzinfo=None)
+    # agenda_find_latest has cut the date to the day. Without one there is
+    # nothing honest to record it under: the time of the check, used here
+    # before, recorded the same meeting again on every check and dated it
+    # after real new agendas, which then never counted as new.
+    try:
+        mdate = datetime.fromisoformat(str(additional.get("meetingDate") or ""))
+    except ValueError:
+        return
     db.execute(
         """INSERT INTO meeting (module_id, date, title, kind, pages, pdf_url, meeting_url)
            VALUES (%s,%s,%s,'Council Meeting',0,%s,%s)

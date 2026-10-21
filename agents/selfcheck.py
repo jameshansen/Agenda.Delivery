@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, "/app")
 
 from agenda_shared import mailer, tools                # noqa: E402
-from agenda_shared.textutil import tidy_title          # noqa: E402
+from agenda_shared.textutil import date_from_title, tidy_title  # noqa: E402
 from agenda_shared.notify import (  # noqa: E402
     _month_target_day, _schedule_due, agenda_email, ensure_unsubscribe,
 )
@@ -178,6 +178,29 @@ def check_listing_never_a_document():
         f"    return [u for u in _find_pdfs(html, '{page}') if re.search(r'\\.pdf$', u)]\n")
 
 
+def check_public_host():
+    # Docker service names resolve to 172.x inside the network; literals and
+    # metadata addresses stand in for them here, offline.
+    for internal in ("127.0.0.1", "localhost", "10.0.0.5", "172.18.0.4", "192.168.1.1",
+                     "169.254.169.254", "::1", "", "no-such-host.invalid"):
+        assert not mailer.public_host(internal), internal
+    assert mailer.public_host("8.8.8.8") and mailer.public_host("2606:4700::1111")
+
+
+def check_date_from_title():
+    from datetime import date
+    # Real titles from prod: New Westminster's was recorded under three
+    # invented dates before the title's own date was used.
+    assert date_from_title("Share Council Meeting Monday, October 05, 2026 @ 6:00 PM") == date(2026, 10, 5)
+    assert date_from_title("Council Thursday, 11 June 2026 @ 6:30 PM") == date(2026, 6, 11)
+    assert date_from_title("Regular Meeting (1:30 PM) and Public Hearing (7:00 PM) - 01 Sep 2026") == date(2026, 9, 1)
+    assert date_from_title("Regular Council Agenda 2026-10-13") == date(2026, 10, 13)
+    assert date_from_title("Sept. 8, 2026 Regular Meeting") == date(2026, 9, 8)
+    # No date, or not a real one: nothing, rather than a guess.
+    for none in ("Regular Council Meeting", "Bylaw 2026-45", "February 30, 2026", ""):
+        assert date_from_title(none) is None, none
+
+
 def check_tidy_title():
     # What the test council's listing turned into an email subject.
     assert tidy_title("Agenda (PDF) - Regular Council Meeting, Wednesday, October 21, 2026")         == "Regular Council Meeting, Wednesday, October 21, 2026"
@@ -194,6 +217,8 @@ def check_tidy_title():
 if __name__ == "__main__":
     check_listing_never_a_document()
     check_tidy_title()
+    check_date_from_title()
+    check_public_host()
     check_error_detection()
     check_schedule()
     check_unsubscribe_guarantee()

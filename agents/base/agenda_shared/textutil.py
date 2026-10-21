@@ -57,6 +57,33 @@ def strip_markdown(text: str) -> str:
     return re.sub(r"\s{2,}", " ", text).strip()
 
 
+_MONTH = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?"
+_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+_TITLE_DATES = (
+    (re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b"), lambda m: (m[1], m[2], m[3])),
+    (re.compile(_MONTH + r"\s+(\d{1,2}),?\s+(\d{4})\b", re.I),
+     lambda m: (m[3], _MONTHS.index(m[1].lower()) + 1, m[2])),
+    (re.compile(r"\b(\d{1,2})\s+" + _MONTH + r",?\s+(\d{4})\b", re.I),
+     lambda m: (m[3], _MONTHS.index(m[2].lower()) + 1, m[1])),
+)
+
+
+def date_from_title(title: str):
+    """The meeting date a title spells out ("Council Meeting Monday, October
+    05, 2026", "11 June 2026", "2026-10-13"), or None. When the model gives
+    no date, this is the only honest one: the time of the check is not when
+    the meeting happened."""
+    from datetime import date
+    for pattern, parts in _TITLE_DATES:
+        m = pattern.search(title or "")
+        if m:
+            try:
+                return date(*(int(p) for p in parts(m)))
+            except ValueError:
+                continue
+    return None
+
+
 def tidy_title(title: str) -> str:
     """Drop the link wording a scraped title picks up from the page: a file
     type or size tag and a leading or trailing "Agenda -". Seen on the test
