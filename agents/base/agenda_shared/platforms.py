@@ -210,7 +210,9 @@ def find_latest(slug: str) -> dict | None:
             break
     if not newest:
         return None
-    regular = next((m for m in meetings if is_regular(m)), None)
+    # Never one newer than the find (skipped above): as the newest row it
+    # would keep the next agenda from counting as new.
+    regular = next((m for m in meetings if is_regular(m) and m["start"] <= newest["start"]), None)
     return {
         "ok": True,
         "detail": (f'{kind} portal {base}: "{newest["title"]}" ({newest["start"][:10]}), '
