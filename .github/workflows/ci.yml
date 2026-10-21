@@ -5,9 +5,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 env:
   NEXT_TELEMETRY_DISABLED: 1
@@ -63,3 +63,15 @@ jobs:
         env:
           DATABASE_URL: postgresql://agenda:agenda@localhost:5432/agenda
         run: npm run db:seed
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python self-checks
+        run: |
+          pip install -r agents/base/requirements.txt
+          python orchestrator/test_enqueue.py
+          python orchestrator/test_flows.py
+          python testcouncil/test_app.py
+          cd agents && PYTHONPATH=base python selfcheck.py
