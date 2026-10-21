@@ -178,6 +178,28 @@ def _agenda_text(m: dict) -> tuple[str, int]:
     return "", 0
 
 
+def adopt(slug: str, found: dict) -> None:
+    """Point a council's listing at the portal another tier's find turned out
+    to be on, once the portal reads, so later checks read the portal. Kelowna's
+    own site refuses scripts, so its eSCRIBE portal only showed when the
+    browser reached an agenda there."""
+    d = found.get("data") or {}
+    hit = next((portal(u) for u in [d.get("meetingUrl"), *(d.get("pdfLinks") or [])] if u and portal(u)), None)
+    if not hit:
+        return
+    kind, base = hit
+    today = date.today()
+    try:
+        if not ranked(READERS[kind](base, today - timedelta(days=365), today + timedelta(days=60)), today):
+            return
+    except Exception as e:
+        print(f"[platforms] {kind} portal {base} unreadable, not adopted: {e}")
+        return
+    db.execute("UPDATE scrape_config SET agenda_url = %s, platform = %s "
+               "WHERE module_id = (SELECT id FROM module WHERE slug = %s)", (base, kind, slug))
+    print(f"[platforms] {slug} now reads its {kind} portal {base}")
+
+
 def find_latest(slug: str) -> dict | None:
     """agenda_find_latest's result for a council on eSCRIBE, PrimeGov or CivicWeb, or
     None when its listing is on neither (or the portal could not be read), so

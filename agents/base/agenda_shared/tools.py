@@ -671,9 +671,11 @@ def _agenda_find_latest(slug, emit=None, model=None):
     if (_looks_like_a_real_meeting(result)
             and not _not_one_agenda(data, _bare_url(data.get('listingUrl')))
             and len(data.get('agendaText') or '') >= 200):
+        _adopt_portal(slug, result)
         return result
     browser_result = browser_find_latest(slug, emit=emit, model=model)
     if browser_result.get('ok'):
+        _adopt_portal(slug, browser_result)
         return browser_result
     # Neither path produced a trustworthy result. Do NOT fall back to the
     # cheap path's result here -- if it looked real we'd have returned it
@@ -687,6 +689,14 @@ def _agenda_find_latest(slug, emit=None, model=None):
                   f"{browser_result.get('detail', 'unknown error')})"),
         'data': {},
     }
+
+
+def _adopt_portal(slug, found):
+    from .platforms import adopt
+    try:
+        adopt(slug, found)
+    except Exception as e:
+        print(f"[agenda_find_latest] portal adoption for {slug!r} skipped: {e}")
 
 
 def _static_find_latest(slug):
