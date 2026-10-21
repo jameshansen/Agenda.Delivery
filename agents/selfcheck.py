@@ -291,6 +291,26 @@ def check_tidy_title():
         assert tidy_title(kept) in (kept, "Agenda"), kept
 
 
+def check_artifact_fallback():
+    """A rate-limited artifact is retried once, then the rule still delivers
+    its summary instead of nothing."""
+    from agenda_shared import notify
+    calls = []
+
+    def refuse(art, text):
+        calls.append(art)
+        raise RuntimeError("OLLAMA_RATE_LIMITED: weekly quota")
+    saved = notify.db.one, notify._artifact_content, notify.time.sleep
+    notify.db.one = lambda *a, **k: {"kind": "custom_prompt", "prompt_text": "In French", "keywords": None}
+    notify._artifact_content, notify.time.sleep = refuse, lambda s: None
+    try:
+        out = notify._rule_content({"artifact_id": "a1", "content_mode": "summary"},
+                                   {"agenda_text": "Agenda", "summary": "The summary", "meeting_title": "M"})
+    finally:
+        notify.db.one, notify._artifact_content, notify.time.sleep = saved
+    assert out == ("The summary", False) and len(calls) == 2
+
+
 def check_static_candidates():
     links = [{"url": "https://langleycity.ca/news/road-rehab", "text": "2026 Road Rehabilitation"},
              {"url": "https://example.ca/council/reg", "text": "Regular Council Meeting"},
@@ -345,6 +365,7 @@ def check_portal_reader():
 if __name__ == "__main__":
     check_portal_reader()
     check_static_candidates()
+    check_artifact_fallback()
     check_listing_never_a_document()
     check_tidy_title()
     check_meeting_titles()

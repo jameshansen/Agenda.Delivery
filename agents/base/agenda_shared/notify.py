@@ -17,6 +17,7 @@ logged and swallowed, never raised.
 import calendar
 import re
 import threading
+import time
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse
 
@@ -66,24 +67,33 @@ def _artifact_content(artifact: dict, agenda_text: str) -> str | None:
     return None
 
 
-def _rule_content(rule: dict, ctx: dict) -> str:
-    """Resolve what a rule should deliver: artifact output, or the raw
-    summary / link / full-text content mode."""
+def _rule_content(rule: dict, ctx: dict) -> tuple[str, bool]:
+    """(what a rule delivers, whether its artifact wrote it). An artifact the
+    model cannot write falls back to the rule's summary, link or full-text
+    content: a rate-limited artifact used to drop the delivery altogether.
+    A rate limit gets one retry first."""
     if rule.get("artifact_id"):
         art = db.one(
             "SELECT kind, prompt_text, keywords FROM automation_artifact WHERE id = %s",
             (rule["artifact_id"],),
         )
-        if art:
-            out = _artifact_content(art, ctx["agenda_text"])
-            if out:
-                return out
+        for attempt in range(2) if art else ():
+            try:
+                out = _artifact_content(art, ctx["agenda_text"])
+                if out:
+                    return out, True
+                break
+            except Exception as exc:
+                print(f"[notify] artifact {rule['artifact_id']} failed: {exc}")
+                if "OLLAMA_RATE_LIMITED" not in str(exc) or attempt:
+                    break
+                time.sleep(30)
     mode = rule.get("content_mode") or "summary"
     if mode == "link":
-        return f"{settings.BASE_URL}/module/{ctx['module_slug']}"
+        return f"{settings.BASE_URL}/module/{ctx['module_slug']}", False
     if mode == "full_text":
-        return ctx["agenda_text"][:AGENDA_CHAR_CAP]
-    return ctx.get("summary") or ctx["meeting_title"]
+        return ctx["agenda_text"][:AGENDA_CHAR_CAP], False
+    return ctx.get("summary") or ctx["meeting_title"], False
 
 
 def _paragraphs(text: str) -> str:
@@ -196,14 +206,14 @@ def run_automation_rules(module_id: str, ctx: dict) -> None:
 
     for rule in rules:
         try:
-            content = _rule_content(rule, ctx)
+            content, from_artifact = _rule_content(rule, ctx)
         except Exception as exc:
             print(f"[notify] rule {rule['id']} content build failed: {exc}")
             continue
 
         # Keep the module page's keyword section fresh: store the latest output
         # of any keyword-artifact rule for this module.
-        if rule.get("artifact_id"):
+        if from_artifact:
             try:
                 art = db.one("SELECT kind FROM automation_artifact WHERE id = %s", (rule["artifact_id"],))
                 if art and art["kind"] == "keywords":
@@ -222,7 +232,7 @@ def run_automation_rules(module_id: str, ctx: dict) -> None:
             if kind == "email":
                 urow = db.one('SELECT email FROM "user" WHERE id = %s', (rule.get("user_id"),))
                 if urow and urow.get("email"):
-                    mode = "artifact" if rule.get("artifact_id") else rule.get("content_mode") or "summary"
+                    mode = "artifact" if from_artifact else rule.get("content_mode") or "summary"
                     html, text = agenda_email(ctx, content, mode, meeting, highlights)
                     mailer.send(mailer.sender_settings(None), urow["email"],
                                 f"{ctx['module_name']}: {ctx['meeting_title']}", html, text)
