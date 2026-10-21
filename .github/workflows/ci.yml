@@ -54,15 +54,16 @@ jobs:
           AUTH_SECRET: ci-test-secret-not-for-prod
         run: npm run build
 
-      - name: Run migrations
+      # db/schema.sql is the schema prod runs, and deploys re-run it on an
+      # existing database, so apply it twice to prove it is safe to repeat.
+      - name: Schema and seed
         env:
-          DATABASE_URL: postgresql://agenda:agenda@localhost:5432/agenda
-        run: npm run db:migrate
-
-      - name: Seed
-        env:
-          DATABASE_URL: postgresql://agenda:agenda@localhost:5432/agenda
-        run: npm run db:seed
+          PGPASSWORD: agenda
+        run: |
+          for pass in 1 2; do
+            psql -h localhost -U agenda -d agenda -v ON_ERROR_STOP=1 -q -f db/schema.sql
+          done
+          psql -h localhost -U agenda -d agenda -v ON_ERROR_STOP=1 -q -f db/seed.sql
 
       - uses: actions/setup-python@v5
         with:

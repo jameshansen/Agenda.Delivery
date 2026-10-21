@@ -35,36 +35,32 @@ agenda.delivery grew out of community work. It started with the [Langley Urbanis
 npm install
 ```
 
-Start Postgres (needs Docker), apply the schema, and seed the sample modules:
-
-```bash
-docker compose up -d
-```
+Copy the environment template:
 
 ```bash
 cp .env.example .env
 ```
 
-```bash
-npm run db:migrate && npm run db:seed
-```
-
-Then the app:
+Bring up the whole stack: Postgres (with the schema and sample modules on first start), Redis, the orchestrator and agents, the test council, and the UI behind nginx:
 
 ```bash
-npm run dev
+docker compose up -d --build
 ```
 
-Open http://localhost:3000.
+Open http://localhost.
+
+`db/schema.sql` and `db/seed.sql` run only when the database is first created. After pulling a schema change, apply the schema to the existing database; it is safe to re-run:
+
+```bash
+docker exec -i agenda-postgres psql -U agenda -d agenda -f - < db/schema.sql
+```
 
 **Google sign-in** is optional: add `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` to
-`.env` (redirect URI `http://localhost:3000/api/auth/callback/google`). Without
+`.env` (redirect URI `http://localhost/api/auth/callback/google`). Without
 them, browsing, search, module pages, and email/text subscribe all still work;
 only the account area needs sign-in.
 
-DB scripts: `db:migrate` (apply committed migrations), `db:seed` (load samples),
-`db:generate` (new migration after a schema change), `db:studio` (Drizzle
-Studio). `db:push` also exists but is interactive — use `db:migrate` in scripts.
+`db/schema.sql` is the schema of record. The Drizzle migrations in `drizzle/` stop before the automation and mailing tables, so `db:migrate` builds an incomplete database; `db:generate` and `db:studio` still work against a running one.
 
 ## Roadmap
 
