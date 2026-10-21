@@ -2,7 +2,9 @@ import Link from "next/link";
 
 export default function Footer() {
   return (
-    <footer className="border-t border-black/5">
+    // mt-auto: on a short page the footer sits at the foot of the window,
+    // not partway down it, so it is in the same place on every page.
+    <footer className="mt-auto border-t border-black/5">
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 px-6 py-8 text-sm text-ink-soft sm:flex-row">
         <p>
           <span className="text-green-dark">agenda</span>
