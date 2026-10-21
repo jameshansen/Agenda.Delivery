@@ -115,7 +115,15 @@ export default function MailingListManager({
     setErr(null);
     setNote(null);
     start(async () => {
-      const res = (await fn()) as T | undefined;
+      let res: T | undefined;
+      try {
+        res = (await fn()) as T | undefined;
+      } catch {
+        // A thrown action would otherwise replace the whole account page
+        // with the error screen (and email the admin) over one bad field.
+        setErr("That didn't save. Check it and try again.");
+        return;
+      }
       if (res && !res.ok) {
         setErr(res.error ?? "Something went wrong.");
         return;

@@ -272,7 +272,16 @@ export default function AccountManager({
           targets={targets}
           mailingLists={mailingLists}
           onClose={() => setRuleOpen(false)}
-          onCreateTarget={(input) => run(() => createTarget(input))}
+          error={err}
+          onCreateTarget={(input) =>
+            new Promise<boolean>((resolve) =>
+              run(async () => {
+                const res = await createTarget(input);
+                resolve(res.ok);
+                return res;
+              }),
+            )
+          }
           onDeleteTarget={(id) => run(() => deleteTarget({ id }))}
           onSave={(input) => run(async () => {
             const res = await createRule(input);
@@ -450,7 +459,7 @@ function ArtifactDialog({ pending, onClose, onSave }: {
 }
 
 function RuleDialog({
-  pending, subscriptions, artifacts, targets, mailingLists, onClose, onSave, onCreateTarget, onDeleteTarget, onGoToMailingLists,
+  pending, subscriptions, artifacts, targets, mailingLists, error, onClose, onSave, onCreateTarget, onDeleteTarget, onGoToMailingLists,
 }: {
   pending: boolean;
   onGoToMailingLists: () => void;
@@ -464,7 +473,10 @@ function RuleDialog({
     artifactId?: string | null; contentMode: "summary" | "link" | "full_text";
     actionKind: "email" | "script" | "discord" | "mailing_list"; targetId?: string | null; listId?: string | null;
   }) => void;
-  onCreateTarget: (i: { kind: "script" | "discord"; name: string; url: string }) => void;
+  /** Resolves true once the server has saved it. */
+  onCreateTarget: (i: { kind: "script" | "discord"; name: string; url: string }) => Promise<boolean>;
+  /** Shown in the dialog: the page's own banner sits behind the overlay. */
+  error: string | null;
   onDeleteTarget: (id: string) => void;
 }) {
   const [moduleId, setModuleId] = useState(subscriptions[0]?.moduleId ?? "");
@@ -546,7 +558,14 @@ function RuleDialog({
         {/* THEN */}
         <div className="rounded-xl bg-row/60 p-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-700">Then</div>
-          <select value={actionKind} onChange={(e) => setActionKind(e.target.value as typeof actionKind)} className={inputCls}>
+          <select
+            value={actionKind}
+            onChange={(e) => {
+              setActionKind(e.target.value as typeof actionKind);
+              setTargetId(""); // a Discord hook is no script endpoint
+            }}
+            className={inputCls}
+          >
             <option value="email">Send to my email</option>
             <option value="discord">Post to Discord</option>
             <option value="script">Push to a script</option>
@@ -599,7 +618,13 @@ function RuleDialog({
                   <input value={ntUrl} onChange={(e) => setNtUrl(e.target.value)} className={inputCls} placeholder="https://…" />
                   <button
                     disabled={pending}
-                    onClick={() => { onCreateTarget({ kind: actionKind, name: ntName, url: ntUrl }); setNtName(""); setNtUrl(""); setShowNewTarget(false); }}
+                    onClick={async () => {
+                      // Keep what was typed if the server refuses it (a URL that
+                      // isn't public, say), so it can be corrected.
+                      if (await onCreateTarget({ kind: actionKind as "script" | "discord", name: ntName, url: ntUrl })) {
+                        setNtName(""); setNtUrl(""); setShowNewTarget(false);
+                      }
+                    }}
                     className="rounded-lg border border-green px-2.5 py-1 text-xs text-green hover:bg-green/10 disabled:opacity-50"
                   >
                     Save target
@@ -609,6 +634,8 @@ function RuleDialog({
             </div>
           )}
         </div>
+
+        {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
         <button
           disabled={pending || !moduleId}

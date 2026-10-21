@@ -274,6 +274,12 @@ export async function createArtifact(input: { kind: "custom_prompt" | "keywords"
 
 export async function deleteArtifact(input: { id: string }) {
   const userId = await requireUserId();
+  // Its actions go too. The foreign key only nulls them, and an action with
+  // no artifact sends the full AI summary: a "zoning only" list would start
+  // getting everything without a word.
+  await db
+    .delete(automationRules)
+    .where(and(eq(automationRules.artifactId, input.id), eq(automationRules.userId, userId)));
   await db.delete(automationArtifacts).where(and(eq(automationArtifacts.id, input.id), eq(automationArtifacts.userId, userId)));
   revalidatePath("/account");
 }
@@ -313,9 +319,16 @@ export async function createRule(input: {
     const [own] = await db
       .select({ id: automationTargets.id })
       .from(automationTargets)
-      .where(and(eq(automationTargets.id, input.targetId!), eq(automationTargets.userId, userId)))
+      .where(
+        and(
+          eq(automationTargets.id, input.targetId!),
+          eq(automationTargets.userId, userId),
+          // A Discord hook would get a script's JSON, and the reverse.
+          eq(automationTargets.kind, input.actionKind),
+        ),
+      )
       .limit(1);
-    if (!own) return { ok: false, error: "Unknown target." };
+    if (!own) return { ok: false, error: "Pick a target of that kind." };
   }
   if (input.actionKind === "mailing_list") {
     const [own] = await db
@@ -546,6 +559,12 @@ export async function updateSubscriber(input: {
   const userId = await requireUserId();
   const email = input.email.trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return { ok: false, error: "That isn't a valid email address." };
+  const [dupe] = await db
+    .select({ id: subscriberTable.id })
+    .from(subscriberTable)
+    .where(and(eq(subscriberTable.userId, userId), sql`lower(${subscriberTable.email}) = ${email}`))
+    .limit(1);
+  if (dupe && dupe.id !== input.id) return { ok: false, error: "Someone on your list already has that address." };
   await db
     .update(subscriberTable)
     .set({ name: input.name.trim().slice(0, 120), email, fields: input.fields ?? {} })
@@ -649,12 +668,20 @@ export async function generateTemplate(input: {
   info: string;
   prompt: string;
 }) {
-  await requireUserId();
+  const userId = await requireUserId();
   if (!llmConfigured()) {
     return { ok: false, error: "The model isn't configured on this server (OLLAMA_BASE_URL is unset)." };
   }
   if (!input.prompt.trim() && !input.info.trim()) {
     return { ok: false, error: "Describe the template you want." };
+  }
+  // The agents share this model quota, and a 429 pauses every council's
+  // checks, so one account can't spend it freely.
+  if (input.prompt.length + input.info.length + input.logoUrl.length > 4000) {
+    return { ok: false, error: "Keep the description under 4,000 characters." };
+  }
+  if (!rateLimit("gen-template:" + userId, 5, 60 * 60 * 1000).allowed) {
+    return { ok: false, error: "That's five drafts this hour. Try again later." };
   }
 
   const user = [
@@ -894,6 +921,12 @@ export async function confirmEmailChange(input: { email: string; code: string })
   const userId = await requireUserId();
   const email = input.email.trim().toLowerCase();
   if (!rateLimit("email-change-verify:" + userId, 8, 10 * 60 * 1000).allowed) {
+    return { ok: false, error: "Too many attempts. Try again in a few minutes." };
+  }
+  // Per address as well, in the same bucket as sign-in: any live code for an
+  // address verifies here, so a limit per account alone let many accounts
+  // guess at one address's sign-in code.
+  if (!rateLimit("otp-verify:" + email, 8, 10 * 60 * 1000).allowed) {
     return { ok: false, error: "Too many attempts. Try again in a few minutes." };
   }
   if (!(await verifyOtp(email, input.code))) {
