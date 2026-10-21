@@ -1,8 +1,7 @@
 """Notification dispatch pipeline.
 
 Called from orchestrator/flows.py after a checking run finds a new meeting.
-Two legs:
-  - notify_subscribers: the base email/text alert to everyone subscribed.
+Following a council sends nothing by itself; delivery is rule-driven:
   - run_automation_rules: the Subscriptions → Artifacts → Actions flowchart —
     per-rule content (summary / link / full text / custom-prompt / keyword
     artifact) emailed, sent to a script or a Discord hook, or queued to a
@@ -48,39 +47,6 @@ def _post_json(url: str, body: dict, headers: dict | None = None) -> None:
     sender = threading.Thread(target=post, daemon=True)
     sender.start()
     sender.join(15)
-
-
-def _send_email(to: str, subject: str, body: str) -> None:
-    """Relay through the host Postfix, which DKIM-signs and delivers."""
-    mailer.send_plain(to, subject, body)
-
-
-def notify_subscribers(module_id: str, module_name: str, module_slug: str, meeting_title: str) -> None:
-    """Base alert: email everyone subscribed to this module via the host SMTP relay."""
-    try:
-        subs = db.query(
-            "SELECT user_id, channel, contact FROM subscription WHERE module_id = %s",
-            (module_id,),
-        )
-    except Exception as exc:
-        print(f"[notify] loading subscriptions failed: {exc}")
-        return
-
-    subject = f"New agenda: {module_name}"
-    body = (
-        f"{module_name} just posted a new agenda: {meeting_title}\n\n"
-        f"Read the AI summary: https://agenda.delivery/module/{module_slug}\n\n"
-        "You're receiving this because you subscribed on agenda.delivery."
-    )
-
-    for sub in subs:
-        if sub["channel"] == "email":
-            _send_email(sub["contact"], subject, body)
-        elif sub["channel"] == "text":
-            # ponytail: SMS sender not wired. Enable settings.SMS_ENABLED and add
-            # a Twilio call here once a sender exists; skipped until then.
-            if settings.SMS_ENABLED:
-                print(f"[notify] SMS enabled but no sender wired for {sub['contact']}")
 
 
 def _artifact_content(artifact: dict, agenda_text: str) -> str | None:
