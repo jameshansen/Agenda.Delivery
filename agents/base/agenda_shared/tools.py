@@ -16,7 +16,7 @@ import requests
 from . import db
 from .llm import complete, complete_json, summarize
 from .settings import AGENT_MODEL
-from .textutil import (date_from_title, is_link_wording, looks_like_garbled_title,
+from .textutil import (date_from_title, is_link_wording, is_minutes, looks_like_garbled_title,
                        names_no_meeting, tidy_title)
 
 RENDERER_URL = os.environ.get("RENDERER_URL", "http://renderer:8000")
@@ -92,12 +92,19 @@ def listing_url(cfg: dict | None, mod: dict) -> str:
     """Where every tier starts looking for the latest meeting. Never a single
     document: a PDF names one meeting forever, so a module that starts from
     one reports that meeting on every check and never sees the next agenda.
-    Falls back to the site's root when both saved URLs are documents."""
+    Never a minutes archive either, which lists minutes, not agendas (Surrey
+    recorded nothing else). Falls back to the site's root when both saved
+    URLs are one or the other."""
     for url in ((cfg or {}).get("agenda_url"), mod.get("source_url")):
-        if url and not is_document(url):
+        if url and not is_document(url) and not _minutes_page(url):
             return url
     u = urlparse((cfg or {}).get("agenda_url") or mod.get("source_url") or "")
     return f"{u.scheme}://{u.netloc}/"
+
+
+def _minutes_page(url: str) -> bool:
+    path = urlparse(url).path.lower()
+    return "minutes" in path and "agenda" not in path
 
 
 def pins_a_document(script: str) -> bool:
@@ -310,6 +317,10 @@ def _links_with_text(html, base):
             url = urljoin(base, href)
         except Exception:
             continue
+        # javascript:, mailto: and the like are no page to fetch; one became a
+        # Prince George "meeting" URL.
+        if not url.lower().startswith(('http://', 'https://')):
+            continue
         inner = m.group(2) or ''
         text = _TAG_RE.sub(' ', inner)
         text = _WS_RE.sub(' ', text).strip()
@@ -416,7 +427,8 @@ def agenda_find_latest(slug, emit=None, model=None):
         title = tidy_title(meeting.get('meetingTitle') or '')
         # A listing page, calendar or page chrome is no meeting, whatever date
         # it was given; on prod these were recorded again on every check.
-        if names_no_meeting(title) or (
+        if names_no_meeting(title) or is_minutes(title) or (
+                not str(meeting.get('meetingUrl') or 'http').lower().startswith('http')) or (
                 listing and _bare_url(meeting.get('meetingUrl')) == listing
                 and not (meeting.get('pdfLinks') or meeting.get('pdfUrl'))):
             bogus.add(id(meeting))

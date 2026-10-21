@@ -55,7 +55,8 @@ class _ScraperBase(BaseAgent):
         repair_system = (
             "You are a scraper configuration agent. Given a website URL and HTML, "
             "determine the best CSS selector to find agenda links. agendaUrl is the page "
-            "that lists meetings, never a single meeting's document such as a PDF. "
+            "that lists meeting agendas, never a single meeting's document such as a PDF, "
+            "and never a minutes archive. "
             'Respond with JSON: {"agendaUrl":"...","linkSelector":"...","fileTypes":["pdf"],"hints":"..."}'
         )
         repair_user = (
