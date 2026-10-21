@@ -109,11 +109,14 @@ def names_no_meeting(title: str) -> bool:
             and re.search(r"\b(pdf|html)\b", low) is None)
 
 
-def is_minutes(title: str) -> bool:
-    """Minutes, not an agenda: Surrey's listing was a minutes archive, and a
-    Prince George "meeting" was the agenda item adopting last meeting's minutes."""
+def is_not_an_agenda(title: str) -> bool:
+    """A meeting document that is not its agenda: minutes (Surrey's listing
+    was a minutes archive; a Prince George "meeting" was the agenda item
+    adopting last meeting's minutes), or a correspondence package or public
+    notice (Burnaby's was recorded, and announced, as a new agenda)."""
     low = (title or "").lower()
-    return re.search(r"\bminutes\b", low) is not None and "agenda" not in low
+    return (re.search(r"\b(minutes|correspondence|public notice)\b", low) is not None
+            and "agenda" not in low)
 
 
 def is_link_wording(title: str) -> bool:

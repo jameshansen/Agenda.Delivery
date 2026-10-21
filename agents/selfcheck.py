@@ -15,7 +15,7 @@ sys.path.insert(0, "/app")
 
 from agenda_shared import mailer, tools                # noqa: E402
 from agenda_shared.textutil import (  # noqa: E402
-    date_from_title, is_link_wording, is_minutes, names_no_meeting, tidy_title,
+    date_from_title, is_link_wording, is_not_an_agenda, names_no_meeting, tidy_title,
 )
 from agenda_shared.notify import (  # noqa: E402
     _month_target_day, _owed, _schedule_due, agenda_email, ensure_unsubscribe,
@@ -247,10 +247,11 @@ def check_meeting_titles():
         assert not names_no_meeting(meeting), meeting
     # Minutes are not an agenda, even when they name a meeting and a date.
     for minutes in ("Special Council Meeting Minutes - September 23, 2026",
-                    "Adoption of the Regular Council Meeting Minutes - July 20, 2026"):
-        assert is_minutes(minutes), minutes
+                    "Adoption of the Regular Council Meeting Minutes - July 20, 2026",
+                    "Council Correspondence and Public Notice Submissions"):
+        assert is_not_an_agenda(minutes), minutes
     for agenda in ("Regular Council Meeting Agenda and Minutes", "Regular Council Meeting"):
-        assert not is_minutes(agenda), agenda
+        assert not is_not_an_agenda(agenda), agenda
     links = tools._links_with_text('<a href="javascript:SelectItem(3);">Minutes</a>'
                                    '<a href="/agenda/5">Agenda</a>', "https://x.test/meetings")
     assert [lk["url"] for lk in links] == ["https://x.test/agenda/5"], links

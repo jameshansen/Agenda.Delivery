@@ -17,7 +17,7 @@ import requests
 from . import db, mailer
 from .llm import complete, complete_json, summarize
 from .settings import AGENT_MODEL
-from .textutil import (date_from_title, is_link_wording, is_minutes, looks_like_garbled_title,
+from .textutil import (date_from_title, is_link_wording, is_not_an_agenda, looks_like_garbled_title,
                        names_no_meeting, tidy_title)
 
 RENDERER_URL = os.environ.get("RENDERER_URL", "http://renderer:8000")
@@ -319,6 +319,29 @@ def _agenda_document(sid: str, url: str) -> tuple[str, int, str | None]:
             return text, pages, pdf_url
     except Exception as e:
         print(f"[browser_find_latest] plain fetch of {url} failed: {e}")
+    return _session_document(sid, url)
+
+
+def _browser_document(url: str) -> tuple[str, int, str | None]:
+    """A document only a browser may download, read through a short session
+    opened on its site; no model call."""
+    sid = requests.post(f"{BROWSER_URL}/session", timeout=120).json().get("session_id")
+    if not sid:
+        return "", 0, None
+    try:
+        parts = urlparse(url)
+        requests.post(f"{BROWSER_URL}/session/{sid}/goto",
+                      json={"url": f"{parts.scheme}://{parts.netloc}/"}, timeout=120)
+        return _session_document(sid, url)
+    finally:
+        try:
+            requests.delete(f"{BROWSER_URL}/session/{sid}", timeout=60)
+        except Exception:
+            pass
+
+
+def _session_document(sid: str, url: str) -> tuple[str, int, str | None]:
+    """(text, pages, pdf_url) of `url` fetched from inside a browser session."""
     try:
         got = requests.post(f"{BROWSER_URL}/session/{sid}/fetch", json={"url": url}, timeout=120).json()
         if got.get("ok"):
@@ -493,12 +516,7 @@ def agenda_find_latest(slug, emit=None, model=None):
         if not meeting:
             continue
         title = tidy_title(meeting.get('meetingTitle') or '')
-        # A listing page, calendar or page chrome is no meeting, whatever date
-        # it was given; on prod these were recorded again on every check.
-        if names_no_meeting(title) or is_minutes(title) or (
-                not str(meeting.get('meetingUrl') or 'http').lower().startswith('http')) or (
-                listing and _bare_url(meeting.get('meetingUrl')) == listing
-                and not (meeting.get('pdfLinks') or meeting.get('pdfUrl'))):
+        if _not_one_agenda(meeting, listing):
             bogus.add(id(meeting))
         # Format-link wording ("HTML", "Agenda Only") names no meeting, but the
         # find is real: give it a name a reader can use.
@@ -515,6 +533,19 @@ def agenda_find_latest(slug, emit=None, model=None):
                 'detail': (f'Found "{data.get("meetingTitle")}" at {data.get("meetingUrl")}, '
                            'a listing or page chrome rather than one meeting')}
     return found
+
+
+def _not_one_agenda(meeting: dict, listing: str) -> bool:
+    """A find that is not one meeting's agenda, whatever date it was given:
+    page chrome, a listing, calendar or schedule, minutes or correspondence,
+    a non-http link, or the listing page itself with no document. On prod
+    such finds were recorded again on every check."""
+    title = tidy_title(meeting.get('meetingTitle') or '')
+    url = meeting.get('meetingUrl')
+    return (names_no_meeting(title) or is_not_an_agenda(title)
+            or not str(url or 'http').lower().startswith('http')
+            or bool(listing and _bare_url(url) == listing
+                    and not (meeting.get('pdfLinks') or meeting.get('pdfUrl'))))
 
 
 def _bare_url(url) -> str:
@@ -566,11 +597,16 @@ def _agenda_find_latest(slug, emit=None, model=None):
             print(f"[agenda_find_latest] saved script for {slug!r} no longer works "
                   f"({script_result.get('detail')}), falling back")
 
-    if row and row.get('platform'):
-        return browser_find_latest(slug, emit=emit, model=model)
-
+    # Static first for every module, platform-tagged ones included: one model
+    # call against the browser tier's eight, and on eSCRIBE it read the
+    # listing's dates better (City of Langley's newest was October 19, where
+    # the browser settled on July 27). Its find must be one agenda; for a
+    # tagged module it must also have text to summarize, or the browser goes.
     result = _static_find_latest(slug)
-    if _looks_like_a_real_meeting(result):
+    data = result.get('data') or {}
+    if (_looks_like_a_real_meeting(result)
+            and not _not_one_agenda(data, _bare_url(data.get('listingUrl')))
+            and (not (row and row.get('platform')) or len(data.get('agendaText') or '') >= 200)):
         return result
     browser_result = browser_find_latest(slug, emit=emit, model=model)
     if browser_result.get('ok'):
@@ -731,6 +767,13 @@ def _static_find_latest(slug):
                 print(f'Skipping PDF extraction for {pdf_links[0]}: {e}')
                 pdf_text = ''
                 pages = 0
+            if not pdf_text:
+                # A portal that refuses a script's download (eSCRIBE's 403)
+                # still serves a browser; no model call involved.
+                try:
+                    pdf_text, pages, _ = _browser_document(pdf_links[0])
+                except Exception as e:
+                    print(f'Browser read of {pdf_links[0]} failed: {e}')
 
         agenda_text = _html_to_text(detail_html) if detail_html else ''
         final = (pdf_text or agenda_text)[:12000]
