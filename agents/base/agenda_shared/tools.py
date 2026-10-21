@@ -9,7 +9,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime, timezone, date
+from datetime import date, datetime, timedelta, timezone
 from html import unescape
 from io import BytesIO
 from urllib.parse import urljoin, urlparse
@@ -732,8 +732,10 @@ def _static_find_latest(slug):
         today = date.today().isoformat()
         system = (
             "You are given links scraped from a municipal council's meetings/agendas "
-            "page. Pick the SINGLE most recent PAST meeting (date on or before today) "
-            "that has an agenda. Prefer a direct agenda PDF; otherwise the meeting's "
+            "page. Pick the SINGLE most recent meeting whose agenda is published. A "
+            "meeting up to 30 days after today counts only when its link is the agenda "
+            "document itself; a scheduled meeting with no agenda link does not. "
+            "Prefer a direct agenda PDF; otherwise the meeting's "
             "detail page. IGNORE navigation, 'skip to content', login, search, and "
             "generic schedule/calendar overview links. Also separately identify the "
             "most recent REGULAR COUNCIL MEETING specifically (not a public hearing, "
@@ -825,6 +827,11 @@ def _static_find_latest(slug):
         final = (pdf_text or agenda_text)[:12000]
         if not final and not pdf_links:
             return {'ok': False, 'detail': 'meeting found but no agenda content', 'data': {}}
+        # An upcoming meeting counts once its agenda is out, which only the
+        # document itself shows: Surrey lists nothing but upcoming meetings.
+        if str(mdate or '') > today and (not pdf_text or str(mdate) > (date.today() + timedelta(days=30)).isoformat()):
+            return {'ok': False, 'data': {},
+                    'detail': f'"{title}" ({mdate}) is upcoming and no agenda document of it was read'}
 
         # The LLM separately flagged the most recent REGULAR council meeting
         # (may differ from the primary pick above, e.g. the primary is a
@@ -1006,8 +1013,10 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                              "href": (e.get("href") or "")[:200]}
                             for e in raw_elements[:40]]
                 today = date.today().isoformat()
-                system = ("You are driving a real browser to find a council's most recent PUBLISHED (not future) "
-                          "meeting AGENDA (the planned items for a meeting, not the minutes/outcomes of one -- "
+                system = ("You are driving a real browser to find a council's most recent meeting AGENDA that is "
+                          "PUBLISHED (an upcoming meeting counts once its agenda document is posted; a scheduled "
+                          "meeting with no agenda yet does not) "
+                          "(the planned items for a meeting, not the minutes/outcomes of one -- "
                           "if a site only offers minutes for past meetings and no agenda is retrievable, that's a "
                           "clean fail, don't substitute minutes). Link text is often generic (\"more\", \"view\") -- "
                           "use each element's href for the real signal (dates, document-type slugs like /agendas/ "
@@ -1121,6 +1130,11 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
             last = (trail[-1].get("reason") if trail else None) or "no steps taken"
             return {"ok": False, "data": {"trail": trail},
                     "detail": f"Browser navigation ended without a specific agenda after {len(trail)} step(s): {last}"[:500]}
+
+        if str(picked_date or "") > date.today().isoformat() and (
+                not pdf_url or str(picked_date) > (date.today() + timedelta(days=30)).isoformat()):
+            return {"ok": False, "data": {"trail": trail},
+                    "detail": f'"{picked_title}" ({picked_date}) is upcoming and no agenda document of it was read'}
 
         final_text = (doc_text or state.get("text", ""))[:12000]
 

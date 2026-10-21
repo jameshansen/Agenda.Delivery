@@ -126,8 +126,7 @@ A council counts as genuinely working when:
 
 1. `agenda_find_latest` returns a specific meeting with a real date (not
    "date unknown", not a generic title), and
-2. that date is plausible (on or before today — the system is explicitly
-   told never to pick a future/scheduled meeting), and
+2. that date is plausible: on or before today, or up to 30 days ahead when the agenda document itself was found and read. A scheduled meeting with no agenda yet never counts. Surrey lists only upcoming meetings, each with its agenda posted, so a past-only rule found nothing there and would deliver every agenda on the day of its meeting, and
 3. there's enough extracted text (from a PDF or the page itself) to actually
    summarize — an empty or near-empty result is left alone rather than
    summarized into something that sounds plausible but says nothing real.
