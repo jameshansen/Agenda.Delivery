@@ -90,7 +90,7 @@ export default async function SearchPage({
               {highlight(m.name, query)}
             </Link>
             <div className="mt-0.5 text-sm text-ink-soft">
-              {highlight(m.region, query)} · {m.followers} followers
+              {highlight(m.region, query)} · {m.followers} follower{m.followers === 1 ? "" : "s"}
             </div>
             {m.summary && (
               <p className="mt-2 text-sm text-ink-soft line-clamp-2">

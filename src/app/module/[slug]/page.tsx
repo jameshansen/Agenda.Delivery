@@ -74,7 +74,7 @@ export default async function ModulePage({
               </>
             );
           })()}
-          <span>{m.followers} followers</span>
+          <span>{m.followers} follower{m.followers === 1 ? "" : "s"}</span>
           <a
             href={m.sourceUrl}
             target="_blank"
