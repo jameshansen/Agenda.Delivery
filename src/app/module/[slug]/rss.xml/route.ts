@@ -28,7 +28,7 @@ export async function GET(
       return `    <item>
       <title>${escapeXml(mt.title)}</title>
       <link>${link}</link>
-      <guid isPermaLink="false">${m.slug}-${escapeXml(mt.title)}</guid>
+      <guid isPermaLink="false">${m.slug}-${new Date(mt.dateRaw).toISOString().slice(0, 10)}-${escapeXml(mt.title)}</guid>
       <pubDate>${date}</pubDate>
       <description>${description}</description>${enclosure}
     </item>`;
