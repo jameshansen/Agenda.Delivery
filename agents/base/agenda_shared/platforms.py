@@ -1,10 +1,12 @@
-"""Readers for the meeting portals councils publish on, eSCRIBE and PrimeGov.
+"""Readers for the meeting portals councils publish on: eSCRIBE, PrimeGov and
+CivicWeb.
 
-Both serve their meeting calendar as public data: each meeting's name, its
+Each serves its meeting calendar as public data: every meeting's name, its
 real date and its agenda documents. The model-driven tiers in tools.py read
 these portals badly. On eSCRIBE they recorded City of Langley's August 28
-special meeting as October 19, and on PrimeGov they took Saanich's portal for
-a login wall. Read here, a portal meeting is exact and needs no model call.
+special meeting as October 19, on PrimeGov they took Saanich's portal for a
+login wall, and on CivicWeb they gave up three steps into Kamloops' calendar.
+Read here, a portal meeting is exact and needs no model call.
 """
 import re
 from datetime import date, timedelta
@@ -17,22 +19,26 @@ from . import db
 from .textutil import is_not_an_agenda
 from .tools import USER_AGENT, _browser_document, _document_text, _get, _html_to_text, listing_url
 
-_PORTAL = re.compile(r"https?://([a-z0-9-]+)\.(escribemeetings|primegov)\.com", re.I)
+_PORTAL = re.compile(r"https?://([a-z0-9-]+)\.(escribemeetings\.com|primegov\.com|civicweb\.net)", re.I)
+_KINDS = {"escribemeetings.com": "escribe", "primegov.com": "primegov", "civicweb.net": "civicweb"}
 # Not a meeting the public can follow: its agenda is a motion to close it.
-_SKIP = re.compile(r"\b(closed|cancell?ed|postponed)\b", re.I)
-_OF_COUNCIL = re.compile(r"council|committee|hearing", re.I)
+_SKIP = re.compile(r"\b(closed|cancell?ed|postponed|rescheduled)\b", re.I)
+_OF_COUNCIL = re.compile(r"council|committee|hearing|regular", re.I)
 _NOT_REGULAR = re.compile(r"special|committee|hearing|workshop|inaugural|closed", re.I)
 _SMALL_WORDS = re.compile(r"(?<=\s)(Of|The|And|For|To|In|On|At|A)\b")
+# CivicWeb names carry the time and date: "Regular Meeting (1:30 pm) - 22 Sep 2026".
+_TIME = re.compile(r"\s*\(\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?\)", re.I)
+_TRAILING_DATE = re.compile(r"\s*-?\s*\d{1,2} [A-Za-z]{3,9},? \d{4}\s*$")
 
 
 def portal(url: str, html: str = ""):
-    """(kind, base URL) of the eSCRIBE or PrimeGov portal a listing is on, or
-    that its page links to; None when it is neither."""
+    """(kind, base URL) of the eSCRIBE, PrimeGov or CivicWeb portal a listing
+    is on, or that its page links to; None when it is none of them."""
     for text in (url or "", html or ""):
         m = _PORTAL.search(text)
         if m:
             host = m[2].lower()
-            return ("escribe" if host == "escribemeetings" else host), f"https://{m[1].lower()}.{host}.com"
+            return _KINDS[host], f"https://{m[1].lower()}.{host}"
     return None
 
 
@@ -91,7 +97,27 @@ def primegov_meetings(base: str, start: date, end: date) -> list[dict]:
     return out
 
 
-READERS = {"escribe": escribe_meetings, "primegov": primegov_meetings}
+def civicweb_meetings(base: str, start: date, end: date) -> list[dict]:
+    res = requests.get(f"{base}/Services/MeetingsService.svc/meetings?from={start}&to={end}",
+                       headers={"User-Agent": USER_AGENT}, timeout=30)
+    res.raise_for_status()
+    out = []
+    for m in res.json() or []:
+        page = f"{base}/Portal/MeetingInformation.aspx?Org=Cal&Id={m.get('Id')}"
+        out.append({
+            "title": _TRAILING_DATE.sub("", _TIME.sub("", _title(m.get("Name")))).strip(" -"),
+            "start": m.get("MeetingDateTime") or "",
+            # An unpublished meeting has no agenda yet. The agenda is a PDF
+            # linked from the meeting's page, found once it is chosen.
+            "url": page if m.get("Published") else None,
+            "pdf": None,
+            "pdf_on_page": True,
+            "docs": [page],
+        })
+    return out
+
+
+READERS = {"escribe": escribe_meetings, "primegov": primegov_meetings, "civicweb": civicweb_meetings}
 
 
 def ranked(meetings: list[dict], today: date) -> list[dict]:
@@ -109,7 +135,12 @@ def ranked(meetings: list[dict], today: date) -> list[dict]:
 
 
 def is_regular(m: dict) -> bool:
-    return "council" in m["title"].lower() and not _NOT_REGULAR.search(m["title"])
+    """A regular council meeting, which on CivicWeb may share its day with a
+    public hearing ("Regular Meeting and Public Hearing")."""
+    title = m["title"].lower()
+    if "regular" in title:
+        return not re.search(r"special|committee|closed", title)
+    return "council" in title and not _NOT_REGULAR.search(title)
 
 
 def only_closes(text: str) -> bool:
@@ -119,9 +150,17 @@ def only_closes(text: str) -> bool:
 
 
 def _agenda_text(m: dict) -> tuple[str, int]:
-    """The agenda's text: the HTML agenda first, which both portals serve to a
-    script, then the PDF (eSCRIBE's needs a browser past its Cloudflare check)."""
-    if m["url"]:
+    """The agenda's text: the HTML agenda first, which eSCRIBE and PrimeGov
+    serve to a script, then the PDF (eSCRIBE's needs a browser past its
+    Cloudflare check). CivicWeb has only the PDF, linked from the meeting's
+    page; it is looked up here and kept on `m`."""
+    if m.get("pdf_on_page"):
+        try:
+            link = re.search(r'href="([^"]*/document/\d+[^"]*\.pdf[^"]*)"', _get(m["url"], 60).text, re.I)
+            m["pdf"] = link and urljoin(m["url"], unescape(link[1]))
+        except Exception as e:
+            print(f"[platforms] meeting page {m['url']} unreadable: {e}")
+    elif m["url"]:
         try:
             res = _get(m["url"], 60)
             if res.ok:
@@ -140,7 +179,7 @@ def _agenda_text(m: dict) -> tuple[str, int]:
 
 
 def find_latest(slug: str) -> dict | None:
-    """agenda_find_latest's result for a council on eSCRIBE or PrimeGov, or
+    """agenda_find_latest's result for a council on eSCRIBE, PrimeGov or CivicWeb, or
     None when its listing is on neither (or the portal could not be read), so
     the other tiers run."""
     mod = db.one("SELECT * FROM module WHERE slug = %s", (slug,))

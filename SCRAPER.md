@@ -26,9 +26,9 @@ at and act on a real page.
 
 ## The exception: portals that publish their meeting data
 
-Two meeting platforms serve their whole calendar as public data: eSCRIBE (`MeetingsCalendarView.aspx/GetCalendarMeetings`) and PrimeGov (`/api/v2/PublicPortal/...`). Each meeting comes with its name, its real date and its agenda documents. On these portals the tiers below were the weak link. They recorded City of Langley's August 28 special meeting as October 19, and took Saanich's PrimeGov portal for a login wall when it is fully public. So `agents/base/agenda_shared/platforms.py` reads them directly, and `agenda_find_latest` tries it before anything else. A council is on one when its listing URL is a portal or its listing page links to one, which is checked on every run, so a council that moves off a portal is followed.
+Three meeting platforms serve their whole calendar as public data: eSCRIBE (`MeetingsCalendarView.aspx/GetCalendarMeetings`), PrimeGov (`/api/v2/PublicPortal/...`) and CivicWeb (`/Services/MeetingsService.svc/meetings`). Each meeting comes with its name, its real date and its agenda documents, or on CivicWeb whether its agenda is published. On these portals the tiers below were the weak link. They recorded City of Langley's August 28 special meeting as October 19, took Saanich's PrimeGov portal for a login wall when it is fully public, and gave up three steps into Kamloops' CivicWeb calendar. So `agents/base/agenda_shared/platforms.py` reads them directly, and `agenda_find_latest` tries it before anything else. A council is on one when its listing URL is a portal or its listing page links to one, which is checked on every run, so a council that moves off a portal is followed.
 
-The reader takes the newest meeting of council or its committees whose agenda is published, up to 30 days ahead, since that is when subscribers want it. It leaves out closed and cancelled meetings, Burnaby's weekly correspondence package (listed as a meeting), and a meeting whose agenda only moves to close it. It reads the HTML agenda, which both portals serve to a script; eSCRIBE's PDFs sit behind a Cloudflare check that only a browser passes. No model call is made, and a portal that cannot be read falls through to the tiers below.
+The reader takes the newest meeting of council or its committees whose agenda is published, up to 30 days ahead, since that is when subscribers want it. It leaves out closed and cancelled meetings, Burnaby's weekly correspondence package (listed as a meeting), and a meeting whose agenda only moves to close it. It reads the HTML agenda, which eSCRIBE and PrimeGov serve to a script; eSCRIBE's PDFs sit behind a Cloudflare check that only a browser passes. CivicWeb has only the PDF, linked from the meeting's page. No model call is made, and a portal that cannot be read falls through to the tiers below.
 
 ## Two tiers, cheapest first
 
@@ -142,7 +142,7 @@ until a future check or a code fix resolves it. It never gets marked
 
 | File | Role |
 |---|---|
-| `agents/base/agenda_shared/platforms.py` | The eSCRIBE and PrimeGov readers: `portal`, `escribe_meetings`, `primegov_meetings`, `ranked`, `find_latest` |
+| `agents/base/agenda_shared/platforms.py` | The eSCRIBE, PrimeGov and CivicWeb readers: `portal`, `escribe_meetings`, `primegov_meetings`, `civicweb_meetings`, `ranked`, `find_latest` |
 | `agents/base/agenda_shared/tools.py` | `_static_find_latest`, `browser_find_latest`, `agenda_find_latest` (the wrapper that ties tiers together), `listing_url`, `generate_extract_script`, `_looks_like_a_real_meeting`, `site_crawl` (renders a JavaScript shell), `sitemap_pages`, `web_search`, `verify_selfcheck`, `db_save_config` |
 | `browser/app.py` | The undetected-Chrome microservice: session lifecycle, frame-aware `state`/`click`/`type`/`links` |
 | `renderer/app.py` | The lightweight headless-Chromium renderer (JS execution only, no interaction) used by the static tier |

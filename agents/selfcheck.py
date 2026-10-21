@@ -293,12 +293,14 @@ def check_tidy_title():
 
 def check_portal_reader():
     from datetime import date
-    from agenda_shared.platforms import _title, only_closes, portal, ranked
+    from agenda_shared.platforms import _TIME, _TRAILING_DATE, _title, is_regular, only_closes, portal, ranked
 
     assert portal("https://pub-coquitlam.escribemeetings.com/") \
         == ("escribe", "https://pub-coquitlam.escribemeetings.com")
     assert portal("https://www.saanich.ca/agendas", '<a href="https://saanichca.primegov.com/public/portal">') \
         == ("primegov", "https://saanichca.primegov.com")
+    assert portal("https://www.kamloops.ca/council", '<a href="https://kamloops.civicweb.net/Portal/">') \
+        == ("civicweb", "https://kamloops.civicweb.net")
     assert portal("https://www.surrey.ca/council", "<a href='/agendas'>") is None
     assert _title("REGULAR COUNCIL MEETING") == "Regular Council Meeting"
     assert _title("COMMITTEE OF THE WHOLE") == "Committee of the Whole"
@@ -319,6 +321,14 @@ def check_portal_reader():
     assert [x["start"][:10] for x in ranked(meetings, date(2026, 10, 21))] == ["2026-07-27"]
     assert [x["start"][:10] for x in ranked(meetings[:1] + [m("Council Meeting", "2026-11-02 19:00:00")],
                                             date(2026, 10, 21))] == ["2026-11-02", "2026-07-27"]
+    kamloops = [m("Regular Meeting and Public Hearing", "2026-10-06 13:30"),
+                m("Committee of the Whole", "2026-09-29 10:00"),
+                m("RESCHEDULED to July 21, 2026 - Build Kamloops Council Select Committee", "2026-10-13 00:00"),
+                m("Regular Meeting and Public Hearing", "2026-10-27 13:30", url=None)]
+    assert [x["start"][:10] for x in ranked(kamloops, date(2026, 10, 21))] == ["2026-10-06", "2026-09-29"]
+    assert is_regular(kamloops[0]) and not is_regular(kamloops[1])
+    assert _TRAILING_DATE.sub("", _TIME.sub("", "Regular Meeting (1:30 pm) - 22 Sep 2026")).strip(" -") \
+        == "Regular Meeting"
     assert only_closes("PROCEDURAL MOTION: That the meeting be closed to the public under section 90")
     assert not only_closes("Motion to close the meeting to the public. " + "Rezoning bylaw. " * 300)
 
