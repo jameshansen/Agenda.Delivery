@@ -291,6 +291,15 @@ def check_tidy_title():
         assert tidy_title(kept) in (kept, "Agenda"), kept
 
 
+def check_static_candidates():
+    links = [{"url": "https://langleycity.ca/news/road-rehab", "text": "2026 Road Rehabilitation"},
+             {"url": "https://example.ca/council/reg", "text": "Regular Council Meeting"},
+             {"url": "https://example.ca/docs/1234", "text": "Council 2026-10-05"},
+             {"url": "https://example.ca/docs/9", "text": "October 19, 2026"}]
+    assert [c["text"] for c in tools._pick_candidates(links)] \
+        == ["Regular Council Meeting", "Council 2026-10-05", "October 19, 2026"]
+
+
 def check_portal_reader():
     from datetime import date
     from agenda_shared.platforms import _TIME, _TRAILING_DATE, _title, is_regular, only_closes, portal, ranked
@@ -335,6 +344,7 @@ def check_portal_reader():
 
 if __name__ == "__main__":
     check_portal_reader()
+    check_static_candidates()
     check_listing_never_a_document()
     check_tidy_title()
     check_meeting_titles()

@@ -434,6 +434,7 @@ def _pdf_text(pdf_url: str, max_pages: int = 20) -> tuple[str, int]:
 # -- agenda.find_latest (LLM-driven selection) ------------------
 _MONTH_RE = re.compile(r'\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b', re.IGNORECASE)
 _YEAR_RE = re.compile(r'\b20\d{2}\b')
+_NUM_DATE_RE = re.compile(r'\b20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}\b|\b\d{1,2}[-/.]\d{1,2}[-/.]20\d{2}\b')
 _A_RE = re.compile(r'<a\s+[^>]*href\s*=\s*["\']?([^"\'>\s]+)["\']?[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)
 _TAG_RE = re.compile(r'<[^>]+>')
 _WS_RE = re.compile(r'\s+')
@@ -502,14 +503,12 @@ def _pick_candidates(all_links):
         ul = u.lower()
         if tl in _JUNK_TEXT or "skip to" in tl:
             continue
+        # A year alone is not a date: "2026 Road Rehabilitation" on City of
+        # Langley's page was picked as its newest agenda.
         matched = (
             any(k in ul or k in tl for k in ('agenda', 'meeting', 'hearing', 'minutes'))
-            or ul.endswith('.pdf') or bool(_MONTH_RE.search(t)) or bool(_YEAR_RE.search(t))
+            or ul.endswith('.pdf') or bool(_MONTH_RE.search(t)) or bool(_NUM_DATE_RE.search(t))
         )
-        # A bare "council" match with no date/agenda word is usually a nav link.
-        if not matched and ('council' in ul or 'council' in tl) and (
-                bool(_MONTH_RE.search(t)) or bool(_YEAR_RE.search(t)) or 'agenda' in tl):
-            matched = True
         if matched and u not in seen:
             seen.add(u)
             candidates.append(lk)
@@ -752,7 +751,10 @@ def _static_find_latest(slug):
         user = json.dumps({"today": today, "links": candidates})
         try:
             picked = complete_json(system, user)
-        except Exception:
+        except Exception as e:
+            # A quota refusal pauses the queue; anything else is a failed pick.
+            if "OLLAMA_RATE_LIMITED" in str(e):
+                raise
             picked = {}
         cand_urls = {c["url"] for c in candidates}
         council_meeting = picked.get("council_meeting") if isinstance(picked, dict) else None
@@ -761,16 +763,12 @@ def _static_find_latest(slug):
             council_meeting = None
         purl = picked.get("url") if isinstance(picked, dict) else None
         if not purl or purl not in cand_urls:
-            # LLM abstained or hallucinated — fall back to the best dated candidate.
-            dated = [c for c in candidates
-                     if _MONTH_RE.search(c["text"]) or _YEAR_RE.search(c["text"])
-                     or c["url"].lower().endswith(".pdf")]
-            if not dated:
-                return {"ok": False,
-                        "detail": "No specific meeting agenda link identified", "data": {}}
-            best = dated[0]
-            picked = {"url": best["url"], "title": best["text"], "date": None,
-                      "is_pdf": best["url"].lower().endswith(".pdf")}
+            # The model found no meeting among the links, or named one that is
+            # not there. The first dated link used to stand in, which is a
+            # guess (often the page's oldest meeting); the browser tier goes.
+            return {"ok": False, "data": {},
+                    "detail": "No specific meeting agenda link identified among "
+                              f"{len(candidates)} candidate links"}
 
         url = picked["url"]
         title = (picked.get("title") or "").strip()
@@ -879,6 +877,8 @@ def _static_find_latest(slug):
             },
         }
     except Exception as e:
+        if "OLLAMA_RATE_LIMITED" in str(e):
+            raise
         return {'ok': False, 'detail': f'agenda.find_latest failed: {e}', 'data': {}}
 
 
