@@ -106,6 +106,21 @@ def pins_a_document(script: str) -> bool:
     return bool(_DOC_LITERAL.search(script or ""))
 
 
+_MEETING_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{5,}", re.I)
+
+
+def pins_its_result(script: str, result: dict) -> bool:
+    """A script whose returned meeting is written into the script itself (the
+    URL, or the id that picks the meeting out: an eSCRIBE GUID, a document
+    number) replays that meeting forever. On prod, six councils' scripts did,
+    and stayed "healthy" while missing two months of agendas."""
+    data = (result or {}).get("data") or {}
+    for url in [data.get("meetingUrl"), *(data.get("pdfLinks") or [])]:
+        if url and (url in script or any(tok in script for tok in _MEETING_ID.findall(url))):
+            return True
+    return False
+
+
 # -- web.search --------------------------------------------------
 def web_search(query: str, site: str = "") -> dict:
     if not query:
@@ -458,10 +473,18 @@ def _agenda_find_latest(slug, emit=None, model=None):
             script_result = run_extract_script(row['extract_script'])
         except Exception as e:
             script_result = {'ok': False, 'detail': f'script runner error: {e}', 'data': {}}
-        if _looks_like_a_real_meeting(script_result):
+        if pins_its_result(row['extract_script'], script_result):
+            # It will return this meeting forever. Drop it, so the tiers below
+            # find the newest and a browser success writes a script that looks.
+            db.execute("UPDATE scrape_config SET extract_script = NULL, script_updated_at = NULL "
+                       "WHERE module_id = (SELECT id FROM module WHERE slug = %s)", (slug,))
+            print(f"[agenda_find_latest] saved script for {slug!r} returns a meeting written "
+                  "into it; dropped it")
+        elif _looks_like_a_real_meeting(script_result):
             return script_result
-        print(f"[agenda_find_latest] saved script for {slug!r} no longer works "
-              f"({script_result.get('detail')}), falling back")
+        else:
+            print(f"[agenda_find_latest] saved script for {slug!r} no longer works "
+                  f"({script_result.get('detail')}), falling back")
 
     if row and row.get('platform'):
         return browser_find_latest(slug, emit=emit, model=model)
@@ -1111,6 +1134,9 @@ def generate_extract_script(slug: str, trail: list, discovered: dict) -> str | N
     if not isinstance(result, dict) or not result.get("ok"):
         print(f"[generate_extract_script] self-test failed for slug={slug!r}: "
               f"{result.get('detail') if isinstance(result, dict) else result}")
+        return None
+    if pins_its_result(script_text, result):
+        print(f"[generate_extract_script] script returns a meeting written into it for slug={slug!r}")
         return None
     test_data = result.get("data") or {}
     if not test_data.get("meetingDate"):

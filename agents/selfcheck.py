@@ -173,6 +173,17 @@ def check_listing_never_a_document():
     root = tools.listing_url({"agenda_url": pdf}, {"source_url": pdf})
     assert root == "https://testcouncil.agenda.delivery/", root
 
+    # Scripts that return a meeting written into them, as six councils' did on
+    # prod, and one that reads its listing.
+    escribe = "https://pub-coquitlam.escribemeetings.com/Meeting.aspx?Id=22594b69-5567-4e1b-99b6-633e33e9c1b6&Agenda=Agenda"
+    found = {"data": {"meetingUrl": escribe, "pdfLinks": []}}
+    assert tools.pins_its_result(f"def extract():\n    url = '{escribe}'\n", found)
+    assert tools.pins_its_result("def extract():\n    mid = '22594b69-5567-4e1b-99b6-633e33e9c1b6'\n", found)
+    assert tools.pins_its_result("def extract():\n    doc = 6752148\n",
+                                 {"data": {"meetingUrl": "https://app.dnv.org/OpenDocument/Default.aspx?docNum=6752148"}})
+    assert not tools.pins_its_result(
+        "def extract():\n    html = _get('https://pub-coquitlam.escribemeetings.com/').text\n", found)
+
     # The extract script that run saved, and one that finds the newest meeting.
     assert tools.pins_a_document(f"def extract():\n    listing = '{pdf}'\n")
     assert not tools.pins_a_document(
