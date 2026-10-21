@@ -111,18 +111,22 @@ services:
       context: ./renderer
     container_name: agenda-renderer
     restart: unless-stopped
+    # tini reaps Chromium's exited processes; gunicorn as PID 1 logged each
+    # one as a worker "sent SIGKILL! Perhaps out of memory?".
+    init: true
     shm_size: "1gb"
     networks: [agenda-net]
 
   # ── Undetected browser (Selenium + undetected-chromedriver) ──
-  # The Scraper Agent drives this to LEARN how to reach each council's
-  # latest agenda (Claude-for-Chrome-style toolset). Heavy; used at setup
-  # + repair, not on every recurring check.
+  # The browser tier drives this to reach a council's latest agenda when the
+  # cheaper paths find nothing, and reads documents only a browser may
+  # download (eSCRIBE's PDFs). Heavy, so it is the last resort.
   browser:
     build:
       context: ./browser
     container_name: agenda-browser
     restart: unless-stopped
+    init: true
     shm_size: "2gb"
     environment:
       BROWSER_URL: http://browser:8000
