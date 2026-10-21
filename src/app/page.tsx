@@ -44,9 +44,10 @@ export default async function Home({
     }
   }
 
+  const PER_PAGE = 100;
   const { items, total, provinces, govTypes } = await getModulesPaged({
     page,
-    perPage: 100,
+    perPage: PER_PAGE,
     province: province && province !== "all" ? province : undefined,
     query,
     lat,
@@ -55,14 +56,24 @@ export default async function Home({
     govTypes: selectedTypes,
   });
 
+  // The same search and filters, on another page.
+  const pageHref = (n: number) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries({ q: query, province, near, type: sp.type })) {
+      if (value) params.set(key, value);
+    }
+    if (n > 1) params.set("page", String(n));
+    return params.size ? `/?${params}` : "/";
+  };
+
   // Health breakdown for the overview strip -- real counts, not decoration.
   const healthCounts = { healthy: 0, repairing: 0, broken: 0 } as Record<Health, number>;
   for (const m of items) healthCounts[m.health]++;
 
   // Most recently updated councils across the whole (unfiltered-by-region) result set.
   const recentActivity = [...items]
-    .filter((m) => m.latestMeetingDate)
-    .sort((a, b) => (a.latestMeetingDate! < b.latestMeetingDate! ? 1 : -1))
+    .filter((m) => m.latestMeetingAt)
+    .sort((a, b) => (a.latestMeetingAt! < b.latestMeetingAt! ? 1 : -1))
     .slice(0, 8);
 
   // Group by province; the province with the most councils opens expanded,
@@ -127,7 +138,7 @@ export default async function Home({
             defaultValue={query}
             aria-label="Search agendas"
             placeholder="Search councils, committees, organizations…"
-            className="flex-1 bg-transparent text-ink outline-none placeholder:text-ink-soft"
+            className="min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-soft"
           />
           <button
             type="submit"
@@ -165,7 +176,7 @@ export default async function Home({
           The meetings that shape your street, your sector, and your city are public, but scattered
           across dozens of sites. agenda.delivery watches them for you.
         </p>
-        <div className="mt-8 grid gap-8 sm:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3">
           {[
             {
               img: "/images/group-individual.jpg",
@@ -208,7 +219,7 @@ export default async function Home({
       {/* What you get */}
       <section className="mx-auto max-w-5xl px-6 pb-20">
         <h2 className="text-center text-2xl sm:text-3xl">Everything the agents do for you</h2>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { icon: "fa-robot", color: "text-emerald-600", title: "Agents watch every page", body: "Autonomous agents crawl council, board, and organization sites around the clock for newly posted agendas." },
             { icon: "fa-comment-dots", color: "text-violet-600", title: "Plain-language summaries", body: "Every agenda is summarized with key highlights and topic tags, so you skim what matters in seconds." },
@@ -429,6 +440,28 @@ export default async function Home({
             </Link>
             .
           </p>
+        )}
+
+        {total > PER_PAGE && (
+          <nav aria-label="Pages" className="mt-6 flex items-center justify-between text-sm">
+            {page > 1 ? (
+              <Link href={pageHref(page - 1)} className="hover:text-green">
+                ← Previous
+              </Link>
+            ) : (
+              <span />
+            )}
+            <span className="text-ink-soft">
+              Page {page} of {Math.ceil(total / PER_PAGE)}
+            </span>
+            {page * PER_PAGE < total ? (
+              <Link href={pageHref(page + 1)} className="hover:text-green">
+                Next →
+              </Link>
+            ) : (
+              <span />
+            )}
+          </nav>
         )}
       </section>
     </main>

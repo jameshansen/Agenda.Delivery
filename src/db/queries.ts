@@ -1,4 +1,4 @@
-import { eq, asc, desc, sql, and, ilike, or, inArray, isNull } from "drizzle-orm";
+import { eq, asc, desc, sql, and, ilike, or, inArray, isNull, getTableColumns } from "drizzle-orm";
 import { db } from "./index";
 import {
   modules,
@@ -41,6 +41,8 @@ export type ModuleListItem = {
   latestMeetingTitle: string | null;
   /** Latest regular council meeting date, if any. */
   latestMeetingDate: string | null;
+  /** ISO timestamp of the same meeting, for sorting; the display date sorts as text. */
+  latestMeetingAt: string | null;
   /** Latitude from the geo.locate agent (null if not yet geolocated). */
   lat: number | null;
   /** Longitude from the geo.locate agent (null if not yet geolocated). */
@@ -104,6 +106,16 @@ export type ModuleView = ModuleListItem & {
   }[];
 };
 
+/**
+ * Followers counted from subscriptions, one per account (or per contact for
+ * an old guest row). module.followers was a stored counter nothing ever
+ * updated, so every council showed 0.
+ */
+export const followerCount = sql<number>`(SELECT count(DISTINCT coalesce(${subscriptions.userId}, ${subscriptions.contact})) FROM ${subscriptions} WHERE ${subscriptions.moduleId} = ${modules.id})`.mapWith(Number);
+
+/** A module row with its live follower count. */
+const moduleWithFollowers = { ...getTableColumns(modules), followers: followerCount };
+
 /** Fetch a paginated, filtered list of modules for the index page. */
 export async function getModulesPaged(opts: {
   page?: number;
@@ -163,25 +175,33 @@ export async function getModulesPaged(opts: {
   const govTypes = [...new Set(govTypeRows.map((r) => r.govType))].sort();
 
   // Get the page of results
-  const rowsQ = db.select().from(modules);
+  const rowsQ = db.select(moduleWithFollowers).from(modules);
   if (where) rowsQ.where(where);
   // NULLS LAST: a council that has never successfully found an agenda has
   // last_updated = NULL forever (only last_checked moves on failed attempts).
   // Postgres's default DESC order puts NULLs first, which would otherwise
   // permanently pin every broken council to the top of the homepage.
-  rowsQ.orderBy(sql`${modules.lastUpdated} DESC NULLS LAST`).limit(perPage).offset((page - 1) * perPage);
+  rowsQ.orderBy(sql`${modules.lastUpdated} DESC NULLS LAST`);
+  // Distance is filtered in JS (postgres earthdistance isn't guaranteed), so
+  // a nearby search reads every row and pages after filtering; paging first
+  // left out every nearby council past the first page.
+  // ponytail: fine for a few hundred modules; a lat/lng bounding box in SQL
+  // when there are thousands.
+  const geo = opts.lat != null && opts.lng != null && opts.radiusKm != null;
+  if (!geo) rowsQ.limit(perPage).offset((page - 1) * perPage);
   const rows = await rowsQ;
 
-  // For geo filtering, if lat/lng provided, filter in JS (postgres earthdistance
-  // extension isn't guaranteed). This is fine for a few hundred modules.
   let filtered = rows;
-  if (opts.lat != null && opts.lng != null && opts.radiusKm) {
-    filtered = rows.filter(
+  let nearbyTotal = 0;
+  if (geo) {
+    const nearby = rows.filter(
       (m) =>
         m.lat != null &&
         m.lng != null &&
         haversine(opts.lat!, opts.lng!, m.lat, m.lng) <= opts.radiusKm!,
     );
+    nearbyTotal = nearby.length;
+    filtered = nearby.slice((page - 1) * perPage, page * perPage);
   }
 
   // Fetch latest regular council meeting for each module (single query).
@@ -232,11 +252,12 @@ export async function getModulesPaged(opts: {
       latestMeetingDate: latestMeetings[m.id]
         ? fmtDate(latestMeetings[m.id].date)
         : null,
+      latestMeetingAt: latestMeetings[m.id]?.date.toISOString() ?? null,
       lat: m.lat,
       lng: m.lng,
       govType: m.govType,
     })),
-    total: opts.lat != null ? filtered.length : Number(total),
+    total: geo ? nearbyTotal : Number(total),
     provinces,
     govTypes,
   };
@@ -245,7 +266,7 @@ export async function getModulesPaged(opts: {
 /** Legacy: fetch all modules (used by search, map, etc.) */
 export async function getModules(): Promise<ModuleListItem[]> {
   const rows = await db
-    .select()
+    .select(moduleWithFollowers)
     .from(modules)
     .orderBy(sql`${modules.lastUpdated} DESC NULLS LAST`);
   return rows.map((m) => ({
@@ -259,6 +280,7 @@ export async function getModules(): Promise<ModuleListItem[]> {
     province: extractProvince(m.region),
     latestMeetingTitle: null,
     latestMeetingDate: null,
+    latestMeetingAt: null,
     lat: m.lat,
     lng: m.lng,
     govType: m.govType,
@@ -269,7 +291,7 @@ export async function getModuleBySlug(
   slug: string,
 ): Promise<ModuleView | null> {
   const [m] = await db
-    .select()
+    .select(moduleWithFollowers)
     .from(modules)
     .where(eq(modules.slug, slug))
     .limit(1);
@@ -353,6 +375,7 @@ export async function getModuleBySlug(
     province: extractProvince(m.region),
     latestMeetingTitle: null,
     latestMeetingDate: null,
+    latestMeetingAt: null,
     lat: m.lat,
     lng: m.lng,
     govType: m.govType,
