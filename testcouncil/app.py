@@ -17,11 +17,17 @@ import sys
 import textwrap
 import threading
 import time
+from contextlib import contextmanager
 from datetime import date, timedelta
 
 from flask import Flask, Response, abort, jsonify, request
 
 from agenda_shared.llm import complete_json
+
+try:
+    import fcntl
+except ImportError:  # a Windows dev box; the container is Linux
+    fcntl = None
 
 STATE_PATH = os.environ.get("TESTCOUNCIL_STATE", "/data/state.json")
 TOKEN = os.environ.get("TESTCOUNCIL_TOKEN", "")
@@ -61,6 +67,23 @@ ROTATION = ["regular-council", "committee-of-the-whole", "regular-council", "pub
 
 app = Flask(__name__)
 LOCK = threading.Lock()
+
+
+@contextmanager
+def locked():
+    """One release or revert at a time across processes too: the CLI, the
+    timer and the admin endpoints each load, change and save the same file,
+    and the thread lock alone let two of them interleave."""
+    with LOCK:
+        if fcntl is None:
+            yield
+            return
+        with open(STATE_PATH + ".lock", "w") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
 e = html.escape
 
 
@@ -74,7 +97,7 @@ def load() -> dict:
 
 
 def save(state: dict) -> None:
-    tmp = STATE_PATH + ".tmp"
+    tmp = f"{STATE_PATH}.{os.getpid()}.tmp"
     with open(tmp, "w") as f:
         json.dump(state, f, indent=1)
     os.replace(tmp, STATE_PATH)
@@ -82,7 +105,7 @@ def save(state: dict) -> None:
 
 def release(committee: str | None = None, day: date | None = None) -> dict:
     """Post the next meeting's agenda and the minutes of the meeting before it."""
-    with LOCK:
+    with locked():
         state = load()
         slug = committee or ROTATION[(state["next_id"] - 1) % len(ROTATION)]
         if slug not in COMMITTEES:
@@ -106,7 +129,7 @@ def release(committee: str | None = None, day: date | None = None) -> dict:
 
 def revert() -> dict | None:
     """Take the newest release back down, here and in agenda.delivery."""
-    with LOCK:
+    with locked():
         state = load()
         if not state["meetings"]:
             return None
