@@ -318,6 +318,34 @@ def delete_session(sid):
     return jsonify({"ok": True})
 
 
+# The page's main region when it has one, else the whole body. The nav loop
+# sees the first 1500 characters, which on Kelowna were all menus: it never
+# read "There are no upcoming meetings posted" and kept clicking that tab.
+_JS_TEXT = """
+const main = document.querySelector('main, [role=main], #main-content');
+const text = main ? main.innerText : '';
+return text.trim().length > 200 ? text : (document.body ? document.body.innerText : '');
+"""
+
+
+def _settle(driver, limit: float = 10.0) -> None:
+    """Wait until the page's text is there and has stopped growing, at most
+    `limit` seconds. A page drawn by script after its load event (DNV's React
+    site fetches its meeting list then) read as empty, and the nav loop
+    reloaded it eight times over."""
+    deadline = time.time() + limit
+    last = -1
+    while time.time() < deadline:
+        try:
+            n = driver.execute_script("return document.body ? document.body.innerText.length : 0;") or 0
+        except Exception:
+            n = 0
+        if n and n == last:
+            return
+        last = n
+        time.sleep(0.75)
+
+
 @app.route("/session/<sid>/goto", methods=["POST"])
 def goto(sid):
     with GLOBAL_LOCK:
@@ -335,6 +363,7 @@ def goto(sid):
             entry["driver"].get(url)
             entry["frame_map"] = {}
             entry["driver"].switch_to.default_content()
+            _settle(entry["driver"])
             refused = _leave_if_internal(entry["driver"])
             if refused:
                 return jsonify({"ok": False, "error": refused}), 400
@@ -396,7 +425,7 @@ def state(sid):
         try:
             driver.switch_to.default_content()
             try:
-                top_text = driver.execute_script("return document.body ? document.body.innerText : '';") or ""
+                top_text = driver.execute_script(_JS_TEXT) or ""
             except Exception:
                 top_text = ""
             if len(top_text) > max_chars:
@@ -525,7 +554,7 @@ def click(sid):
                 except Exception:
                     pass
                 time.sleep(0.25)
-            time.sleep(1.5)
+            _settle(driver)
 
             # Many portal links (civicweb.net, legistar.com, etc.) are
             # target="_blank" to a different domain -- the click opens a new

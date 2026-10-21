@@ -318,6 +318,11 @@ def check_static_candidates():
              {"url": "https://example.ca/docs/9", "text": "October 19, 2026"}]
     assert [c["text"] for c in tools._pick_candidates(links)] \
         == ["Regular Council Meeting", "Council 2026-10-05", "October 19, 2026"]
+    # Surrey's link says only "Advisory Design Panel"; its agenda opens with the date.
+    assert tools._date_in("Advisory Design Panel",
+                          "CITY OF SURREY\nADVISORY DESIGN PANEL AGENDA\nThursday, October 22, 2026") == "2026-10-22"
+    assert tools._date_in("Regular Council Meeting - July 20, 2026", "") == "2026-07-20"
+    assert tools._date_in("Council Meeting", "Call to order") is None
 
 
 def check_portal_reader():

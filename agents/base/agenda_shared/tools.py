@@ -519,6 +519,15 @@ def _pick_candidates(all_links):
     return candidates
 
 
+def _date_in(title: str | None, agenda_text: str | None) -> str | None:
+    """The meeting date its title or the top of its agenda spells out, for a
+    find the model could not date. Surrey's listing puts the date in a table
+    cell beside the link, so "Advisory Design Panel" came back undated and was
+    dropped, though its agenda opens with the date."""
+    found = date_from_title(title or "") or date_from_title((agenda_text or "")[:1500])
+    return found.isoformat() if found else None
+
+
 def _looks_like_a_real_meeting(result: dict) -> bool:
     """The cheap static path can return ok:True while having actually landed
     on a generic category/archive page (e.g. a "2025 Agendas & Minutes" year
@@ -826,6 +835,7 @@ def _static_find_latest(slug):
         final = (pdf_text or agenda_text)[:12000]
         if not final and not pdf_links:
             return {'ok': False, 'detail': 'meeting found but no agenda content', 'data': {}}
+        mdate = mdate or _date_in(title, final)
         # An upcoming meeting counts once its agenda is out, which only the
         # document itself shows: Surrey lists nothing but upcoming meetings.
         if str(mdate or '') > today and (not pdf_text or str(mdate) > (date.today() + timedelta(days=30)).isoformat()):
@@ -1140,6 +1150,7 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
             return {"ok": False, "data": {"trail": trail},
                     "detail": f"Browser navigation ended without a specific agenda after {len(trail)} step(s): {last}"[:500]}
 
+        picked_date = picked_date or _date_in(picked_title, doc_text)
         if str(picked_date or "") > date.today().isoformat() and (
                 not pdf_url or str(picked_date) > (date.today() + timedelta(days=30)).isoformat()):
             return {"ok": False, "data": {"trail": trail},
