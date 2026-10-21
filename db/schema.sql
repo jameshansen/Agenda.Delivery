@@ -297,15 +297,6 @@ CREATE TABLE IF NOT EXISTS agent_config (
 -- deleted). The module page's per-meeting Summary button expands to this.
 ALTER TABLE meeting ADD COLUMN IF NOT EXISTS summary TEXT;
 
--- Backfill: the newest meeting per module inherits the module's current summary.
-UPDATE meeting mt SET summary = m.summary
-  FROM module m
- WHERE mt.module_id = m.id
-   AND m.summary IS NOT NULL
-   AND mt.summary IS NULL
-   AND mt.id = (SELECT id FROM meeting x WHERE x.module_id = m.id
-                ORDER BY x.date DESC LIMIT 1);
-
 -- Reusable delivery targets (scripts + Discord hooks), created and reused
 -- in the actions dialog.
 CREATE TABLE IF NOT EXISTS automation_target (
@@ -452,6 +443,16 @@ CREATE TABLE IF NOT EXISTS mailing_list_subscriber (
   list_id       TEXT NOT NULL REFERENCES mailing_list(id) ON DELETE CASCADE,
   subscriber_id TEXT NOT NULL REFERENCES subscriber(id) ON DELETE CASCADE,
   PRIMARY KEY (list_id, subscriber_id)
+);
+
+-- One row per queued item delivered to one subscriber, so a retry after a
+-- partial send, or a crash mid-round, reaches only the subscribers who
+-- missed it.
+CREATE TABLE IF NOT EXISTS mailing_delivery (
+  queue_id      TEXT NOT NULL REFERENCES mailing_queue(id) ON DELETE CASCADE,
+  subscriber_id TEXT NOT NULL REFERENCES subscriber(id) ON DELETE CASCADE,
+  sent_at       TIMESTAMP NOT NULL DEFAULT now(),
+  PRIMARY KEY (queue_id, subscriber_id)
 );
 
 -- HTML email templates. user_id NULL = the built-in agenda.delivery default,

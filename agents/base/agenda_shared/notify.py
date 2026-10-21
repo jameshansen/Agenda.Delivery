@@ -18,7 +18,7 @@ logged and swallowed, never raised.
 import calendar
 import re
 import threading
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 import requests
@@ -409,9 +409,20 @@ def _items_html(pending: list[dict]) -> str:
     return "".join(blocks)
 
 
+# A host that fails this many recipients running is down: stop the round
+# instead of waiting out a timeout per recipient on the scheduler thread.
+FAILURES_IN_A_ROW = 3
+
+
+def _owed(pending: list[dict], delivered: set, subscriber_id: str) -> list[dict]:
+    """The queued items this subscriber has not been sent yet."""
+    return [p for p in pending if (p["id"], subscriber_id) not in delivered]
+
+
 def _maybe_send_list(ml: dict) -> None:
     pending = db.query(
-        "SELECT id, subject, body FROM mailing_queue WHERE list_id = %s AND sent_at IS NULL ORDER BY created_at",
+        "SELECT id, subject, body, created_at FROM mailing_queue "
+        "WHERE list_id = %s AND sent_at IS NULL ORDER BY created_at",
         (ml["id"],),
     )
     if not pending or not _schedule_due(ml, len(pending)):
@@ -421,29 +432,37 @@ def _maybe_send_list(ml: dict) -> None:
     if not recipients:
         return  # keep items queued until the list has somewhere to go
 
+    # Who already has what: a retry after a partial send, or after a crash
+    # mid-round, reaches only the subscribers who missed an item.
+    delivered = {(r["queue_id"], r["subscriber_id"]) for r in db.query(
+        "SELECT queue_id, subscriber_id FROM mailing_delivery WHERE queue_id = ANY(%s)",
+        ([p["id"] for p in pending],))}
+
     cfg = mailer.sender_settings(ml.get("user_id"))
     template = _template_html(ml)
     account_fields = _account_fields(ml["user_id"])
-    n = len(pending)
-    subject = f"{ml['name']}: {n} update{'s' if n != 1 else ''}"
-
     base = {
         **account_fields,
         "organization_name": account_fields.get("organization_name") or ml["name"],
         "list_name": ml["name"],
-        "subject": subject,
         "header": _as_html(ml.get("header")),
         "footer": _as_html(ml.get("footer")),
-        "content": _items_html(pending),
         "date": _today_label(),
     }
 
-    sent = 0
+    sent = in_a_row = 0
     for sub in recipients:
+        items = _owed(pending, delivered, sub["id"])
+        if not items:
+            continue
+        n = len(items)
+        subject = f"{ml['name']}: {n} update{'s' if n != 1 else ''}"
         per_sub = sub.get("fields") or {}
         values = {
             **base,
             **(per_sub if isinstance(per_sub, dict) else {}),
+            "subject": subject,
+            "content": _items_html(items),
             "subscriber_name": sub.get("name") or "",
             "subscriber_email": sub["email"],
             "unsubscribe_url": f"{settings.BASE_URL}/unsubscribe/{sub['id']}",
@@ -453,16 +472,30 @@ def _maybe_send_list(ml: dict) -> None:
         # human-facing page cannot -- hence the separate API route.
         one_click = f"{settings.BASE_URL}/api/unsubscribe/{sub['id']}"
         if mailer.send(cfg, sub["email"], subject, body, one_click_url=one_click):
-            sent += 1
+            sent, in_a_row = sent + 1, 0
+            ids = [p["id"] for p in items]
+            db.execute(
+                "INSERT INTO mailing_delivery (queue_id, subscriber_id) "
+                "SELECT unnest(%s::text[]), %s ON CONFLICT DO NOTHING", (ids, sub["id"]))
+            delivered.update((i, sub["id"]) for i in ids)
+        else:
+            in_a_row += 1
+            if in_a_row >= FAILURES_IN_A_ROW:
+                print(f"[notify] mailing list '{ml['name']}': {in_a_row} sends failed running; "
+                      "stopping this round")
+                break
 
-    if sent == 0:
-        print(f"[notify] mailing list '{ml['name']}' reached no one; leaving {n} items queued")
-        return
-
-    db.execute("UPDATE mailing_queue SET sent_at = now() WHERE id = ANY(%s)",
-               ([p["id"] for p in pending],))
-    db.execute("UPDATE mailing_list SET last_sent_at = now() WHERE id = %s", (ml["id"],))
-    print(f"[notify] mailing list '{ml['name']}' sent {n} items to {sent} recipients")
+    if sent:
+        db.execute("UPDATE mailing_list SET last_sent_at = now() WHERE id = %s", (ml["id"],))
+    # An item is done once every recipient has it. One a recipient still
+    # lacks after a day is given up on, rather than retried every minute.
+    day_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+    done = [p["id"] for p in pending
+            if not any(_owed([p], delivered, s["id"]) for s in recipients) or p["created_at"] < day_ago]
+    if done:
+        db.execute("UPDATE mailing_queue SET sent_at = now() WHERE id = ANY(%s)", (done,))
+    print(f"[notify] mailing list '{ml['name']}': sent to {sent} recipient(s); "
+          f"{len(done)} of {len(pending)} item(s) done")
 
 
 def flush_mailing_lists() -> None:

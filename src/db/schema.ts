@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   jsonb,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { AdapterAccountType } from "next-auth/adapters";
 
 /* ---- Auth.js (Drizzle adapter) tables ---- */
@@ -402,6 +403,11 @@ export const scrapeConfigs = pgTable("scrape_config", {
   // Whether the config was last verified working.
   verified: boolean("verified").notNull().default(true),
   updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  // Written by the Python agents (db/schema.sql is the schema of record).
+  platform: text("platform"),
+  navRecipe: text("nav_recipe"),
+  extractScript: text("extract_script"),
+  scriptUpdatedAt: timestamp("script_updated_at", { mode: "date" }),
 });
 
 /**
@@ -501,7 +507,10 @@ export const subscribers = pgTable(
     fields: jsonb("fields").notNull().default({}),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
-  (t) => [index("subscriber_user_idx").on(t.userId)],
+  (t) => [
+    index("subscriber_user_idx").on(t.userId),
+    uniqueIndex("subscriber_user_email_uniq").on(t.userId, sql`lower(${t.email})`),
+  ],
 );
 
 /** Who a list sends to when its audience is "selected". */
@@ -512,6 +521,17 @@ export const mailingListSubscribers = pgTable(
     subscriberId: text("subscriber_id").notNull().references(() => subscribers.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ columns: [t.listId, t.subscriberId] })],
+);
+
+/** Which subscribers a queued item has reached; a retry skips them. */
+export const mailingDeliveries = pgTable(
+  "mailing_delivery",
+  {
+    queueId: text("queue_id").notNull().references(() => mailingQueue.id, { onDelete: "cascade" }),
+    subscriberId: text("subscriber_id").notNull().references(() => subscribers.id, { onDelete: "cascade" }),
+    sentAt: timestamp("sent_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.queueId, t.subscriberId] })],
 );
 
 /** HTML templates. userId NULL = the shared built-in default. */
@@ -526,13 +546,17 @@ export const emailTemplates = pgTable("email_template", {
 
 /** Template placeholder values. Built-in keys live in code; rows hold the
  * user's value plus any key they added themselves. */
-export const mergeFields = pgTable("merge_field", {
-  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  key: text("key").notNull(),
-  label: text("label").notNull(),
-  value: text("value").notNull().default(""),
-});
+export const mergeFields = pgTable(
+  "merge_field",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    value: text("value").notNull().default(""),
+  },
+  (t) => [uniqueIndex("merge_field_user_key_uniq").on(t.userId, t.key)],
+);
 
 /** How an account's mailing lists actually leave the building. */
 export const senderSettings = pgTable("sender_settings", {

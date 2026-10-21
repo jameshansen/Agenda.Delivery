@@ -48,6 +48,25 @@ services:
       retries: 5
     networks: [agenda-net]
 
+  # Postgres runs db/schema.sql only when the database is first created.
+  # This applies it to the existing database on every full `up`, so a schema
+  # change ships with the code; the file is written to be re-run (CI applies
+  # it twice). An `up --no-deps <service>` deploy skips it.
+  schema:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-agenda}
+      PGOPTIONS: "-c client_min_messages=warning"
+    volumes:
+      - ./db:/db:ro
+    command: ["psql", "-h", "postgres", "-U", "agenda", "-d", "agenda",
+              "-v", "ON_ERROR_STOP=1", "-q", "-f", "/db/schema.sql"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [agenda-net]
+
   redis:
     image: redis:7-alpine
     container_name: agenda-redis
@@ -80,6 +99,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      schema:
+        condition: service_completed_successfully
       redis:
         condition: service_started
     networks: [agenda-net]
@@ -211,6 +232,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      schema:
+        condition: service_completed_successfully
     networks: [agenda-net]
 
   nginx:

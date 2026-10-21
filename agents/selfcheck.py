@@ -15,10 +15,10 @@ sys.path.insert(0, "/app")
 
 from agenda_shared import mailer, tools                # noqa: E402
 from agenda_shared.textutil import (  # noqa: E402
-    date_from_title, is_link_wording, names_no_meeting, tidy_title,
+    date_from_title, is_link_wording, is_minutes, names_no_meeting, tidy_title,
 )
 from agenda_shared.notify import (  # noqa: E402
-    _month_target_day, _schedule_due, agenda_email, ensure_unsubscribe,
+    _month_target_day, _owed, _schedule_due, agenda_email, ensure_unsubscribe,
 )
 try:
     # Escalation-only; the shared checks below still run in any other image.
@@ -86,6 +86,15 @@ def check_schedule():
     assert _month_target_day("last", datetime(2028, 2, 15).date()) == 29   # leap
     assert _month_target_day("17", datetime(2026, 2, 15).date()) == 17
     assert _month_target_day("nonsense", datetime(2026, 2, 15).date()) == 1
+
+
+def check_partial_send_retry():
+    # Two queued items; ann got both, bo got the first, cy got nothing.
+    pending = [{"id": "q1"}, {"id": "q2"}]
+    delivered = {("q1", "ann"), ("q2", "ann"), ("q1", "bo")}
+    assert _owed(pending, delivered, "ann") == []
+    assert [p["id"] for p in _owed(pending, delivered, "bo")] == ["q2"]
+    assert [p["id"] for p in _owed(pending, delivered, "cy")] == ["q1", "q2"]
 
 
 def check_unsubscribe_guarantee():
@@ -225,6 +234,18 @@ def check_meeting_titles():
                     "Agenda Only", "HTML", "Public Hearing Meetings - September 1, 2026",
                     "Agenda PDF - Council Meetings", "Council Meetings - Agenda PDF"):
         assert not names_no_meeting(meeting), meeting
+    # Minutes are not an agenda, even when they name a meeting and a date.
+    for minutes in ("Special Council Meeting Minutes - September 23, 2026",
+                    "Adoption of the Regular Council Meeting Minutes - July 20, 2026"):
+        assert is_minutes(minutes), minutes
+    for agenda in ("Regular Council Meeting Agenda and Minutes", "Regular Council Meeting"):
+        assert not is_minutes(agenda), agenda
+    links = tools._links_with_text('<a href="javascript:SelectItem(3);">Minutes</a>'
+                                   '<a href="/agenda/5">Agenda</a>', "https://x.test/meetings")
+    assert [lk["url"] for lk in links] == ["https://x.test/agenda/5"], links
+    surrey = "https://www.surrey.ca/council/council-committee-commission-board-and-task-force-minutes"
+    assert tools.listing_url({"agenda_url": surrey}, {"source_url": surrey}) == "https://www.surrey.ca/"
+
     # Format-link wording names no meeting, though the find was real.
     for wording in ("HTML", "Agenda Only", "Agenda PDF", "Council", "Agenda (Merged)",
                     "Council Meetings Agenda PDF", ""):
@@ -255,6 +276,7 @@ if __name__ == "__main__":
     check_error_detection()
     check_schedule()
     check_unsubscribe_guarantee()
+    check_partial_send_retry()
     check_unsubscribe_headers()
     check_empty_image_stripping()
     check_render()
