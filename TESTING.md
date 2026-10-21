@@ -183,6 +183,13 @@ In Account, Automation, add the Test Council as a subscription, then build actio
 ### Mailing lists
 
 - **Delivery.** In Mailing Lists, add yourself as a subscriber and create a list with a threshold of 1. Point a "Queue to a mailing list" action at it. Release and check. The update is queued and goes out within a minute, wrapped in the list's template.
+- **The standing test list.** The Test Inbox account has one already: "Test Inbox digest", threshold 1, with two subscribers at `agendatest+list1@` and `agendatest+list2@`, fed by the Test Council. After `notify_now.py test-council`, both digests reach the test inbox within a minute, each with a `List-Unsubscribe` header, and the queued item records a delivery per subscriber:
+
+```bash
+sudo -n docker exec agenda-postgres psql -U agenda -d agenda -c "SELECT q.subject, q.sent_at, (SELECT count(*) FROM mailing_delivery d WHERE d.queue_id = q.id) AS delivered_to FROM mailing_queue q JOIN mailing_list l ON l.id = q.list_id WHERE l.name = 'Test Inbox digest' ORDER BY q.created_at DESC LIMIT 3"
+```
+
+- **Partial sends.** A send that reaches some subscribers and not others marks only those deliveries; the next round goes only to the subscribers who missed the item, and an item still undelivered after a day is given up.
 - **Schedules.** A weekly or monthly list holds its queue until its day, and sends at most once per UTC day.
 - **Templates.** "Generate from AI" drafts a template with the same model; "Send test" sends it to your own address.
 - **Unsubscribe.** The link in a list email opens /unsubscribe/<id>, and confirming marks the subscriber unsubscribed. The one-click `List-Unsubscribe` header does the same.
