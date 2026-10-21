@@ -111,7 +111,10 @@ export type ModuleView = ModuleListItem & {
  * an old guest row). module.followers was a stored counter nothing ever
  * updated, so every council showed 0.
  */
-export const followerCount = sql<number>`(SELECT count(DISTINCT coalesce(${subscriptions.userId}, ${subscriptions.contact})) FROM ${subscriptions} WHERE ${subscriptions.moduleId} = ${modules.id})`.mapWith(Number);
+// Spelled out, not interpolated: in a single-table select Drizzle renders
+// columns without their table, and an unqualified "id" binds to the
+// subscription's own id, which counted 0 for every council.
+export const followerCount = sql<number>`(SELECT count(DISTINCT coalesce(s.user_id, s.contact)) FROM subscription s WHERE s.module_id = "module"."id")`.mapWith(Number);
 
 /** A module row with its live follower count. */
 const moduleWithFollowers = { ...getTableColumns(modules), followers: followerCount };
