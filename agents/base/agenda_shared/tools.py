@@ -299,20 +299,34 @@ def _is_pdf_response(res) -> bool:
     return res.content[:5] == b"%PDF-" or "pdf" in res.headers.get("content-type", "").lower()
 
 
-def _document_text(url: str, max_pages: int = 20) -> tuple[str, int, bool]:
-    """(text, pages, is_pdf) for a meeting document, PDF or HTML, decided by
-    the response. Public addresses only, like every other user-facing fetch.
-    Coquitlam's agenda PDF was read as HTML and summarized from a popup."""
+def _document_text(url: str, max_pages: int = 20) -> tuple[str, int, str | None]:
+    """(text, pages, pdf_url) for a meeting's agenda, read from the document
+    itself: the PDF at `url`, else the PDF its page links to, else the page's
+    text (rendered first when it is a JavaScript shell). pdf_url is the PDF
+    read, or None. Coquitlam's agenda PDF (an eSCRIBE FileStream.ashx link)
+    was read as HTML, and Burnaby's was summarized from the navigation of the
+    page that links to it."""
     res = _get(url, 60)
     if not res.ok:
-        return "", 0, False
+        return "", 0, None
     if _is_pdf_response(res):
         from pypdf import PdfReader  # local import keeps container start fast
         reader = PdfReader(BytesIO(res.content))
         total = len(reader.pages)
         text = "\n".join((reader.pages[i].extract_text() or "") for i in range(min(max_pages, total)))
-        return text, total, True
-    return _html_to_text(res.text), 0, False
+        return text, total, url
+    html = res.text
+    if _is_js_shell(html):
+        rendered, _ = render_html(url)
+        html = rendered or html
+    for pdf in _find_pdfs(html, url)[:1]:
+        try:
+            text, total = _pdf_text(pdf, max_pages)
+            if text.strip():
+                return text, total, pdf
+        except Exception as e:
+            print(f"[_document_text] linked PDF {pdf} unreadable: {e}")
+    return _html_to_text(html), 0, None
 
 
 def _pdf_text(pdf_url: str, max_pages: int = 20) -> tuple[str, int]:
@@ -979,10 +993,10 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
             return {"ok": False, "detail": "Browser navigation exhausted without finding a specific agenda", "data": {"trail": trail}}
 
         try:
-            doc_text, pages, is_pdf = _document_text(picked_url)
+            doc_text, pages, pdf_url = _document_text(picked_url)
         except Exception as e:
             print(f"[browser_find_latest] document text skipped: {e}")
-            doc_text, pages, is_pdf = "", 0, False
+            doc_text, pages, pdf_url = "", 0, None
         final_text = (doc_text or state.get("text", ""))[:12000]
 
         hay = (picked_url + (mod["source_url"] or "")).lower()
@@ -998,7 +1012,7 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
             "meetingUrl": picked_url,
             "meetingDate": picked_date,
             "agendaText": final_text,
-            "pdfLinks": [picked_url] if is_pdf else [],
+            "pdfLinks": [pdf_url] if pdf_url else [],
             "pages": pages,
             "listingUrl": start_url,
             "platform": platform_guess,
