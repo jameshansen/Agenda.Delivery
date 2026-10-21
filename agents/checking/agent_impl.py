@@ -23,7 +23,9 @@ class CheckingAgent(BaseAgent):
         self.module_id = mod["id"]
 
         self.emit(f"Checking if {mod['name']} has posted a new agenda.",
-                  "schedule.predict", "cadence: biweekly, confidence 0.91 → poll now")
+                  "schedule.predict",
+                  f"last checked {mod['last_checked']:%Y-%m-%d %H:%M} UTC" if mod.get("last_checked")
+                  else "first check")
 
         # verify.selfcheck is a cheap, coarse heuristic (keyword matches on
         # raw HTML) -- informational only. It does NOT gate whether we try

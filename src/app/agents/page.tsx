@@ -69,7 +69,6 @@ const TOOL_META: Record<string, { icon: string; color: string; label: string }> 
   "llm.summarize": { icon: "fa-brain", color: "text-violet-600", label: "summarize" },
   "llm.triage": { icon: "fa-stethoscope", color: "text-red-600", label: "triage" },
   "queue.enqueue": { icon: "fa-list-ol", color: "text-slate-500", label: "enqueue" },
-  "s3.put": { icon: "fa-cloud-arrow-up", color: "text-sky-500", label: "store" },
   "schedule.predict": { icon: "fa-clock", color: "text-indigo-600", label: "schedule" },
   "site.crawl": { icon: "fa-spider", color: "text-emerald-600", label: "crawl" },
   "verify.selfcheck": { icon: "fa-shield-halved", color: "text-teal-600", label: "self-check" },
@@ -97,7 +96,7 @@ function modelMeta(model: string | undefined) {
 }
 
 /** Tiny, ~8px-tall badge: monogram chip + model name, under the tool badge.
- * Non-LLM steps (db.save_config, s3.put, lifecycle events, ...) have no
+ * Non-LLM steps (db.save_config, lifecycle events, ...) have no
  * model -- render a neutral "Action" badge instead of nothing, so every
  * event gets this row and the log doesn't jump around vertically. */
 function ModelBadge({ model }: { model?: string }) {

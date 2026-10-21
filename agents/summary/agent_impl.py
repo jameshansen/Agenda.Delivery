@@ -41,7 +41,7 @@ class SummaryAgent(BaseAgent):
     _DEFAULT_PROMPT = (
         "You are the Summary Agent for agenda.delivery. Given agenda text, you "
         "write a concise general summary (2-4 sentences) and extract 3-5 key "
-        "highlights with short tags. You also store the compressed text to S3."
+        "highlights with short tags."
     )
 
     def run(self, job: dict) -> str:
@@ -61,10 +61,6 @@ class SummaryAgent(BaseAgent):
             )
             return "No content to summarize"
 
-        self.emit(
-            "Stripped embedded images and stored the compressed text to S3.",
-            "s3.put", f"{len(agenda_text)} chars -> stored compressed",
-        )
         self.emit(
             "Detecting the end of the meeting in the agenda text.",
             "llm.summarize", "scanning for adjournment / termination marker",
