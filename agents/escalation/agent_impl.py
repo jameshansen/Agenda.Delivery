@@ -24,6 +24,7 @@ Job inputs: {"window_hours": int}  (default 24)
 
 import hashlib
 import re
+from datetime import date
 
 from agenda_shared import db, mailer
 from agenda_shared.agent import BaseAgent
@@ -67,6 +68,14 @@ def looks_like_code_error(text: str | None) -> bool:
     if not text or len(text) < 12:
         return False
     return bool(_CODE_RE.search(text))
+
+
+def severity(value) -> str:
+    """One of info/warning/critical, whatever the model returned: a null or
+    odd value broke the insert (severity is NOT NULL) or .upper(), and the
+    run aborted with earlier findings recorded but never sent."""
+    value = str(value or "").lower()
+    return value if value in SEVERITY_RANK else "warning"
 
 
 def fingerprint(*parts: str) -> str:
@@ -113,16 +122,24 @@ class EscalationAgent(BaseAgent):
                           "; ".join(f["subject"] for f in found[:4])[:300])
             findings.extend(found)
 
-        fresh = [f for f in findings if self._record(f)]
-        if not fresh:
+        for f in findings:
+            self._record(f)
+        # Everything recorded but not yet emailed, this tick's or an earlier
+        # one's whose email failed. Only fresh findings used to be sent, so a
+        # tick with the mail relay down lost its findings for good.
+        unsent = db.query(
+            """SELECT kind, fingerprint, severity, subject, body FROM escalation
+                WHERE notified_at IS NULL AND created_at > now() - INTERVAL '7 days'
+                ORDER BY created_at""")
+        if not unsent:
             # Silent on purpose: a clean sweep is the normal case, and an
             # event per tick buries the ones that matter.
             return f"No new escalations ({len(findings)} already known)"
 
-        self.output = {"escalated": len(fresh)}
-        if self._notify(fresh, hours):
-            return f"Escalated {len(fresh)} issue(s) to {ADMIN_EMAIL}"
-        return f"Recorded {len(fresh)} issue(s); admin email could not be sent"
+        self.output = {"escalated": len(unsent)}
+        if self._notify(unsent, hours):
+            return f"Escalated {len(unsent)} issue(s) to {ADMIN_EMAIL}"
+        return f"Recorded {len(unsent)} issue(s); admin email could not be sent"
 
     # ── passes ────────────────────────────────────────────────
     def _failed_runs(self, hours: int) -> list[dict]:
@@ -161,6 +178,8 @@ class EscalationAgent(BaseAgent):
         return out
 
     def _site_errors(self, hours: int) -> list[dict]:
+        # The endpoint is open to anyone, so keep the table to a week.
+        db.execute("DELETE FROM site_error WHERE created_at < now() - INTERVAL '7 days'")
         rows = db.query(
             """SELECT message, detail, path, digest, count(*) AS hits,
                       max(created_at) AS last_seen
@@ -168,7 +187,9 @@ class EscalationAgent(BaseAgent):
                 WHERE created_at > now() - make_interval(hours => %s)
                 GROUP BY message, detail, path, digest
                 ORDER BY count(*) DESC
-                LIMIT 50""",
+                -- Ten a sweep: anyone can post a report, so a burst of
+                -- distinct messages must not fill the admin's inbox.
+                LIMIT 10""",
             (hours,),
         )
         out = []
@@ -201,7 +222,9 @@ class EscalationAgent(BaseAgent):
                 LIMIT 50""")
         return [{
             "kind": "module_broken",
-            "fingerprint": fingerprint("module_broken", r["id"]),
+            # A week in the fingerprint: once per module ever meant a council
+            # that broke again months later never raised an alert.
+            "fingerprint": fingerprint("module_broken", r["id"], date.today().strftime("%G-W%V")),
             "severity": "warning",
             "subject": f"{r['name']} has been broken for over a day",
             "body": (
@@ -239,6 +262,9 @@ class EscalationAgent(BaseAgent):
                  FROM agent_event
                 WHERE created_at > now() - make_interval(hours => %s)
                   AND (response IS NOT NULL OR detail IS NOT NULL)
+                  -- Its own events quote the errors it found, which then
+                  -- read as new errors on the next sweep.
+                  AND agent <> 'Escalation Agent' 
                 ORDER BY created_at DESC
                 LIMIT 500""",
             (hours,),
@@ -275,11 +301,18 @@ class EscalationAgent(BaseAgent):
         for c in candidates[:MAX_LLM_TRIAGE]:
             verdict = self._judge(c)
             if not verdict.get("is_error"):
+                # Remember the verdict: unrecorded, the same false positive
+                # (a bylaw's "Exception:" clause, say) was judged every hour.
+                db.execute(
+                    """INSERT INTO escalation (kind, fingerprint, severity, subject, body, notified_at)
+                       VALUES ('dismissed', %s, 'info', %s, %s, now())
+                       ON CONFLICT (fingerprint) DO NOTHING""",
+                    (c["fingerprint"], f"Not an error: {c['where']}", _clip(verdict.get("why"), 300)))
                 continue
             out.append({
                 "kind": "bad_output",
                 "fingerprint": c["fingerprint"],
-                "severity": verdict.get("severity", "warning"),
+                "severity": severity(verdict.get("severity")),
                 "subject": f"Coding error in output: {c['where']}",
                 "body": (
                     f"Where:  {c['where']}\n"
@@ -290,18 +323,8 @@ class EscalationAgent(BaseAgent):
                 "module_id": c["module_id"],
                 "run_id": c["run_id"],
             })
-        # Anything beyond the LLM budget still gets escalated, just unjudged --
-        # better a slightly noisy alert than a silently dropped one.
-        for c in candidates[MAX_LLM_TRIAGE:]:
-            out.append({
-                "kind": "bad_output",
-                "fingerprint": c["fingerprint"],
-                "severity": "warning",
-                "subject": f"Coding error in output: {c['where']}",
-                "body": f"Where: {c['where']}\n(not model-triaged: over the per-run budget)\n\n{_clip(c['text'], 1500)}",
-                "module_id": c["module_id"],
-                "run_id": c["run_id"],
-            })
+        # Anything beyond the budget waits for the next sweep, unrecorded, so
+        # it is judged then rather than mailed unjudged now.
         return out
 
     def _judge(self, candidate: dict) -> dict:
@@ -341,7 +364,7 @@ class EscalationAgent(BaseAgent):
                VALUES (%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT (fingerprint) DO NOTHING
                RETURNING id""",
-            (finding["kind"], finding["fingerprint"], finding["severity"],
+            (finding["kind"], finding["fingerprint"], severity(finding.get("severity")),
              finding["subject"], finding["body"], finding.get("module_id"),
              finding.get("run_id")),
         )

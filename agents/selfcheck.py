@@ -22,15 +22,18 @@ from agenda_shared.notify import (  # noqa: E402
 )
 try:
     # Escalation-only; the shared checks below still run in any other image.
-    from agent_impl import looks_like_code_error       # noqa: E402
+    from agent_impl import looks_like_code_error, severity  # noqa: E402
 except ImportError:
-    looks_like_code_error = None
+    looks_like_code_error = severity = None
 
 
 def check_error_detection():
     if looks_like_code_error is None:
         print("selfcheck: skipping error detection (not the escalation image)")
         return
+    # Whatever severity the model returns, a valid one is recorded.
+    assert severity(None) == severity("urgent") == severity(3) == "warning"
+    assert severity("CRITICAL") == "critical" and severity("info") == "info"
     # Things that are faults.
     for bad in (
         'Traceback (most recent call last):\n  File "app.py", line 3, in <module>\n    boom()',
