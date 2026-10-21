@@ -8,6 +8,7 @@ import base64
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone, date
 from html import unescape
 from io import BytesIO
@@ -965,12 +966,19 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                 return {"ok": False, "detail": f"goto start failed: {e}", "data": {}}
 
             for step in range(max_steps):
-                try:
-                    st = requests.get(f"{BROWSER_URL}/session/{sid}/state?max_chars=2500", timeout=90)
-                    state = st.json()
-                    if not state.get("ok"):
+                # A page still loading (Kamloops' meeting page opens a large
+                # PDF) can fail one read; one failure used to end the run with
+                # no reason given.
+                for attempt in range(2):
+                    try:
+                        state = requests.get(f"{BROWSER_URL}/session/{sid}/state?max_chars=2500", timeout=90).json()
+                    except Exception as e:
+                        state = {"ok": False, "error": str(e)}
+                    if state.get("ok"):
                         break
-                except Exception:
+                    time.sleep(5)
+                if not state.get("ok"):
+                    trail.append({"action": "fail", "reason": f"page unreadable: {state.get('error')}"[:300]})
                     break
 
                 try:
@@ -1110,7 +1118,9 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                 pass
 
         if not found:
-            return {"ok": False, "detail": "Browser navigation exhausted without finding a specific agenda", "data": {"trail": trail}}
+            last = (trail[-1].get("reason") if trail else None) or "no steps taken"
+            return {"ok": False, "data": {"trail": trail},
+                    "detail": f"Browser navigation ended without a specific agenda after {len(trail)} step(s): {last}"[:500]}
 
         final_text = (doc_text or state.get("text", ""))[:12000]
 
