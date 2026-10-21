@@ -17,7 +17,9 @@ logged and swallowed, never raised.
 
 import calendar
 import re
+import threading
 from datetime import date, datetime, timezone
+from urllib.parse import urlparse
 
 import requests
 
@@ -27,10 +29,25 @@ AGENDA_CHAR_CAP = 8000
 
 
 def _post_json(url: str, body: dict, headers: dict | None = None) -> None:
-    try:
-        requests.post(url, json=body, headers=headers, timeout=10)
-    except Exception as exc:
-        print(f"[notify] post to {url} failed: {exc}")
+    """POST to a user's Discord or script target. Public http(s) addresses
+    only, and no redirects, which could point back inside the network."""
+    parts = urlparse(url)
+    if parts.scheme not in ("http", "https") or not mailer.public_host(parts.hostname or ""):
+        print(f"[notify] refusing to post to {url}: not a public http(s) address")
+        return
+
+    def post() -> None:
+        try:
+            requests.post(url, json=body, headers=headers, timeout=10, allow_redirects=False)
+        except Exception as exc:
+            print(f"[notify] post to {url} failed: {exc}")
+
+    # The timeout above is per read, so a target that trickles its reply never
+    # trips it, and deliveries run on the orchestrator's only worker thread.
+    # Give up waiting after 15s; the daemon thread dies with its socket.
+    sender = threading.Thread(target=post, daemon=True)
+    sender.start()
+    sender.join(15)
 
 
 def _send_email(to: str, subject: str, body: str) -> None:
@@ -197,7 +214,8 @@ def run_automation_rules(module_id: str, ctx: dict) -> None:
         print(f"[notify] loading automation_rules failed: {exc}")
         return
 
-    # What an email notification shows besides the rule's own content.
+    # What an email notification shows besides the rule's own content. The
+    # highlights belong to the summary, so without one they'd be stale.
     meeting, highlights = None, []
     if any(r["action_kind"] == "email" for r in rules):
         try:
@@ -206,7 +224,7 @@ def run_automation_rules(module_id: str, ctx: dict) -> None:
                 "ORDER BY date DESC LIMIT 1", (module_id,))
             highlights = db.query(
                 "SELECT tag, text FROM highlight WHERE module_id = %s ORDER BY sort LIMIT 5",
-                (module_id,))
+                (module_id,)) if ctx.get("summary") else []
         except Exception as exc:
             print(f"[notify] loading email extras failed: {exc}")
 

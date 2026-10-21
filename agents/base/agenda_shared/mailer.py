@@ -11,8 +11,10 @@ what {{placeholder}} means.
 """
 
 import html as html_mod
+import ipaddress
 import re
 import smtplib
+import socket
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr
 
@@ -180,11 +182,29 @@ def _send_relay(cfg: dict, to: str, subject: str, html_body: str, text_body: str
     return True
 
 
+def public_host(host: str) -> bool:
+    """True when every address `host` resolves to is on the public internet.
+    User-supplied webhook and SMTP hosts are reached from inside the Docker
+    network, where Postgres, Redis, the agents and the browser all listen.
+
+    ponytail: resolves, then the client resolves again, so a DNS rebind can
+    slip between the two; connect to the checked address if that matters.
+    """
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (OSError, UnicodeError):
+        return False
+    return bool(infos) and all(ipaddress.ip_address(i[4][0].split("%")[0]).is_global for i in infos)
+
+
 def _send_smtp(cfg: dict, to: str, subject: str, html_body: str, text_body: str,
                one_click_url: str | None = None) -> bool:
     host = cfg.get("smtp_host")
     if not host:
         print("[mailer] smtp provider selected but no host configured")
+        return False
+    if not public_host(host):
+        print(f"[mailer] refusing SMTP host {host!r}: not a public address")
         return False
     port = int(cfg.get("smtp_port") or 587)
     msg = _build(cfg, to, subject, html_body, text_body, one_click_url)
