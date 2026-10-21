@@ -57,6 +57,18 @@ def strip_markdown(text: str) -> str:
     return re.sub(r"\s{2,}", " ", text).strip()
 
 
+def tidy_title(title: str) -> str:
+    """Drop the link wording a scraped title picks up from the page: a file
+    type or size tag and a leading or trailing "Agenda -". Seen on the test
+    council as "Agenda (PDF) - Regular Council Meeting, Wednesday, October
+    21, 2026", which then became an email subject, and on real councils as
+    "Regular Council Meeting - July 20, 2026 - Agenda (HTML)"."""
+    tidy = re.sub(r"\s*\((?:pdf|docx?|html?|[\d.,]+\s*[kmg]?b)\)", "", title or "", flags=re.I)
+    tidy = re.sub(r"^\s*agenda\s*[-–—:|]\s*", "", tidy, flags=re.I)
+    tidy = re.sub(r"\s*[-–—:|]\s*agenda\s*$", "", tidy, flags=re.I)
+    return re.sub(r"\s{2,}", " ", tidy).strip() or (title or "").strip()
+
+
 def looks_like_garbled_title(title: str) -> bool:
     """Catch scraped meeting titles that are actually mangled page junk, not
     a real title -- e.g. an unescaped HTML entity followed by a long run of

@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, "/app")
 
 from agenda_shared import mailer, tools                # noqa: E402
+from agenda_shared.textutil import tidy_title          # noqa: E402
 from agenda_shared.notify import (  # noqa: E402
     _month_target_day, _schedule_due, agenda_email, ensure_unsubscribe,
 )
@@ -177,8 +178,22 @@ def check_listing_never_a_document():
         f"    return [u for u in _find_pdfs(html, '{page}') if re.search(r'\\.pdf$', u)]\n")
 
 
+def check_tidy_title():
+    # What the test council's listing turned into an email subject.
+    assert tidy_title("Agenda (PDF) - Regular Council Meeting, Wednesday, October 21, 2026")         == "Regular Council Meeting, Wednesday, October 21, 2026"
+    assert tidy_title("Public Hearing Agenda (245 KB)") == "Public Hearing Agenda"
+    assert tidy_title("Agenda: Special Council Meeting") == "Special Council Meeting"
+    assert tidy_title("Regular Council Meeting - July 20, 2026 - Agenda (HTML)") \
+        == "Regular Council Meeting - July 20, 2026"
+    assert tidy_title("Agenda – Regular Meeting (1:30 PM) and Public Hearing (7:00 PM)") \
+        == "Regular Meeting (1:30 PM) and Public Hearing (7:00 PM)"
+    for kept in ("Regular Council Meeting", "Agenda (PDF)", "Agenda", "Minutes - Council"):
+        assert tidy_title(kept) in (kept, "Agenda"), kept
+
+
 if __name__ == "__main__":
     check_listing_never_a_document()
+    check_tidy_title()
     check_error_detection()
     check_schedule()
     check_unsubscribe_guarantee()

@@ -16,7 +16,7 @@ import requests
 from . import db
 from .llm import complete, complete_json, summarize
 from .settings import AGENT_MODEL
-from .textutil import looks_like_garbled_title
+from .textutil import looks_like_garbled_title, tidy_title
 
 RENDERER_URL = os.environ.get("RENDERER_URL", "http://renderer:8000")
 BROWSER_URL = os.environ.get("BROWSER_URL", "http://browser:8000")
@@ -383,6 +383,17 @@ def _looks_like_a_real_meeting(result: dict) -> bool:
 
 
 def agenda_find_latest(slug, emit=None, model=None):
+    """Find the latest agenda (see _agenda_find_latest) and tidy the meeting
+    titles, whichever tier found them: readers see them in lists and subjects."""
+    found = _agenda_find_latest(slug, emit=emit, model=model)
+    data = found.get('data') or {}
+    for meeting in (data, data.get('additionalMeeting') or {}):
+        if meeting.get('meetingTitle'):
+            meeting['meetingTitle'] = tidy_title(meeting['meetingTitle'])
+    return found
+
+
+def _agenda_find_latest(slug, emit=None, model=None):
     """Find the latest agenda. Fastest path first: a previously self-tested,
     LLM-authored extraction script (see generate_extract_script) -- pure
     HTTP, no browser, no per-check LLM cost. If it's missing or its own
