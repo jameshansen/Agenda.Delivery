@@ -8,10 +8,13 @@ Contract:
     POST /render {"url": str, "wait_ms"?: int} -> {"ok", "html", "final_url"}
     GET  /health -> {"ok": true}
 """
+import ipaddress
+import socket
 import threading
+from urllib.parse import urlparse
 
 from flask import Flask, request, jsonify
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright
 
 app = Flask(__name__)
 
@@ -27,13 +30,35 @@ _lock = threading.Lock()
 
 
 def _browser_instance():
+    """The worker's Chromium, relaunched if it has crashed: before, one crash
+    failed every render in the worker until a restart."""
     global _pw, _browser
-    if _browser is None:
-        _pw = sync_playwright().start()
+    if _browser is None or not _browser.is_connected():
+        _pw = _pw or sync_playwright().start()
         _browser = _pw.chromium.launch(
             args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
         )
     return _browser
+
+
+def _public_host(host: str, seen: dict) -> bool:
+    """Every address `host` resolves to is on the public internet. Council
+    pages are untrusted, and this container sits on the Docker network."""
+    if host not in seen:
+        try:
+            infos = socket.getaddrinfo(host, None)
+            seen[host] = bool(infos) and all(
+                ipaddress.ip_address(i[4][0].split("%")[0]).is_global for i in infos)
+        except (OSError, UnicodeError, ValueError):
+            seen[host] = False
+    return seen[host]
+
+
+def _allowed(url: str, seen: dict) -> bool:
+    parts = urlparse(url)
+    if parts.scheme in ("data", "blob", "about"):
+        return True  # no network
+    return parts.scheme in ("http", "https") and _public_host(parts.hostname or "", seen)
 
 
 @app.post("/render")
@@ -44,15 +69,25 @@ def render():
     if not url:
         return jsonify(ok=False, error="no url"), 400
 
+    seen: dict = {}
+    if not _allowed(url, seen):
+        return jsonify(ok=False, error=f"refused a non-public address: {url}"), 400
+
     with _lock:
         ctx = None
         try:
-            page = (ctx := _browser_instance().new_context(user_agent=USER_AGENT)).new_page()
-            page.goto(url, wait_until="networkidle", timeout=30000)
+            ctx = _browser_instance().new_context(user_agent=USER_AGENT)
+            # Every request the page makes, redirects and subresources too.
+            ctx.route("**/*", lambda route: route.continue_() if _allowed(route.request.url, seen)
+                      else route.abort())
+            page = ctx.new_page()
+            page.goto(url, wait_until="load", timeout=30000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=15000)
+            except PlaywrightTimeout:
+                pass  # a long-polling page never goes idle; what loaded is enough
             page.wait_for_timeout(wait_ms)
-            html = page.content()
-            final_url = page.url
-            return jsonify(ok=True, html=html, final_url=final_url)
+            return jsonify(ok=True, html=page.content(), final_url=page.url)
         except Exception as e:  # noqa: BLE001
             return jsonify(ok=False, error=str(e)), 500
         finally:

@@ -206,6 +206,14 @@ def check_public_host():
     for internal in ("127.0.0.1", "localhost", "10.0.0.5", "172.18.0.4", "192.168.1.1",
                      "169.254.169.254", "::1", "", "no-such-host.invalid"):
         assert not mailer.public_host(internal), internal
+    # Council fetches refuse them before sending anything, as do non-http links.
+    for url in ("http://169.254.169.254/latest/meta-data/", "http://127.0.0.1:8000/status",
+                "file:///etc/passwd", "javascript:alert(1)"):
+        try:
+            tools._get(url)
+            raise AssertionError(f"fetched {url}")
+        except ValueError:
+            pass
     assert mailer.public_host("8.8.8.8") and mailer.public_host("2606:4700::1111")
 
 

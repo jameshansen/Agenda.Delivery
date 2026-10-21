@@ -1,12 +1,15 @@
 import base64
 import io
+import ipaddress
 import os
 import re
 import signal
+import socket
 import subprocess
 import time
 import threading
 import uuid
+from urllib.parse import urlparse
 
 from flask import Flask, request, jsonify
 from PIL import Image
@@ -31,9 +34,41 @@ CHROMEDRIVER_PATH = os.environ.get("CHROMEDRIVER_PATH")
 # Hard bounds so a caller that fails to DELETE a session (e.g. its delete
 # request times out under load) can't pile up headful Chrome instances and
 # exhaust the host. The orchestrator drives the browser one job at a time, so
-# a low cap is safe; anything older than the TTL is a leak and gets reaped.
+# a low cap is safe; one idle longer than the TTL is a leak and gets reaped.
 MAX_SESSIONS = int(os.environ.get("MAX_BROWSER_SESSIONS", "2"))
-SESSION_TTL = int(os.environ.get("BROWSER_SESSION_TTL", "240"))  # seconds
+SESSION_TTL = int(os.environ.get("BROWSER_SESSION_TTL", "240"))  # seconds idle
+
+
+def _public(url: str) -> bool:
+    """http(s) on the public internet only. The nav loop's next URL comes
+    from a model reading crawled pages, which can carry instructions to visit
+    cloud metadata or the Docker network's own services, and what this
+    browser sees is published in the agent log."""
+    parts = urlparse(url or "")
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parts.hostname, None)
+    except (OSError, UnicodeError):
+        return False
+    return bool(infos) and all(ipaddress.ip_address(i[4][0].split("%")[0]).is_global for i in infos)
+
+
+def _leave_if_internal(driver):
+    """After any navigation (a goto, a click, a redirect): blank a page that
+    is not public and say why, else None."""
+    url = driver.current_url
+    if url == "about:blank" or _public(url):
+        return None
+    driver.get("about:blank")
+    return f"refused a non-public address: {url}"
+
+
+def _touch(entry):
+    """Mark a session used now; the reaper goes by idle time."""
+    if entry:
+        entry["used"] = time.time()
+    return entry
 
 
 def _kill_driver(driver) -> None:
@@ -76,11 +111,14 @@ def _reaper_loop() -> None:
         stale = []
         with GLOBAL_LOCK:
             for sid, e in list(SESSIONS.items()):
-                if now - e.get("created", now) > SESSION_TTL:
+                # Idle time, not age: an 8-step navigation with a model call
+                # per step runs past the TTL while in steady use.
+                if now - e.get("used", e.get("created", now)) > SESSION_TTL:
                     SESSIONS.pop(sid, None)
                     stale.append((sid, e))
         for sid, e in stale:
-            _kill_driver(e["driver"])
+            with e["lock"]:  # never pull Chrome out from under a request
+                _kill_driver(e["driver"])
             print(f"[reaper] killed stale browser session {sid}", flush=True)
 
 
@@ -264,7 +302,8 @@ def create_session():
             driver = _make_driver()
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
-        SESSIONS[sid] = {"driver": driver, "lock": threading.Lock(), "frame_map": {}, "created": time.time()}
+        SESSIONS[sid] = {"driver": driver, "lock": threading.Lock(), "frame_map": {}, "created": time.time(),
+                         "used": time.time()}
         return jsonify({"ok": True, "session_id": sid})
 
 
@@ -282,18 +321,23 @@ def delete_session(sid):
 @app.route("/session/<sid>/goto", methods=["POST"])
 def goto(sid):
     with GLOBAL_LOCK:
-        entry = SESSIONS.get(sid)
+        entry = _touch(SESSIONS.get(sid))
     if not entry:
         return jsonify({"ok": False, "error": "no such session"}), 404
     data = request.get_json(silent=True) or {}
     url = data.get("url")
     if not url:
         return jsonify({"ok": False, "error": "missing url"}), 400
+    if not _public(url):
+        return jsonify({"ok": False, "error": f"refused a non-public address: {url}"}), 400
     with entry["lock"]:
         try:
             entry["driver"].get(url)
             entry["frame_map"] = {}
             entry["driver"].switch_to.default_content()
+            refused = _leave_if_internal(entry["driver"])
+            if refused:
+                return jsonify({"ok": False, "error": refused}), 400
             return jsonify({"ok": True, "url": entry["driver"].current_url, "title": entry["driver"].title})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
@@ -302,7 +346,7 @@ def goto(sid):
 @app.route("/session/<sid>/state", methods=["GET"])
 def state(sid):
     with GLOBAL_LOCK:
-        entry = SESSIONS.get(sid)
+        entry = _touch(SESSIONS.get(sid))
     if not entry:
         return jsonify({"ok": False, "error": "no such session"}), 404
     max_chars = request.args.get("max_chars", default=6000, type=int)
@@ -373,7 +417,7 @@ def screenshot(sid):
     (max 640px wide, JPEG q60, typically 15-40KB) is the right tradeoff --
     it's for showing "here's what the browser saw", not forensic detail."""
     with GLOBAL_LOCK:
-        entry = SESSIONS.get(sid)
+        entry = _touch(SESSIONS.get(sid))
     if not entry:
         return jsonify({"ok": False, "error": "no such session"}), 404
     with entry["lock"]:
@@ -396,7 +440,7 @@ def screenshot(sid):
 @app.route("/session/<sid>/click", methods=["POST"])
 def click(sid):
     with GLOBAL_LOCK:
-        entry = SESSIONS.get(sid)
+        entry = _touch(SESSIONS.get(sid))
     if not entry:
         return jsonify({"ok": False, "error": "no such session"}), 404
     data = request.get_json(silent=True) or {}
@@ -466,6 +510,9 @@ def click(sid):
                 driver.switch_to.default_content()
             except Exception:
                 pass
+            refused = _leave_if_internal(driver)
+            if refused:
+                return jsonify({"ok": False, "error": refused}), 400
             return jsonify({"ok": True, "url": driver.current_url, "title": driver.title})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
@@ -479,7 +526,7 @@ def click(sid):
 @app.route("/session/<sid>/type", methods=["POST"])
 def type_route(sid):
     with GLOBAL_LOCK:
-        entry = SESSIONS.get(sid)
+        entry = _touch(SESSIONS.get(sid))
     if not entry:
         return jsonify({"ok": False, "error": "no such session"}), 404
     data = request.get_json(silent=True) or {}
@@ -519,6 +566,9 @@ def type_route(sid):
                 driver.switch_to.default_content()
             except Exception:
                 pass
+            refused = _leave_if_internal(driver)
+            if refused:
+                return jsonify({"ok": False, "error": refused}), 400
             return jsonify({"ok": True, "url": driver.current_url, "title": driver.title})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
@@ -532,7 +582,7 @@ def type_route(sid):
 @app.route("/session/<sid>/links", methods=["GET"])
 def links(sid):
     with GLOBAL_LOCK:
-        entry = SESSIONS.get(sid)
+        entry = _touch(SESSIONS.get(sid))
     if not entry:
         return jsonify({"ok": False, "error": "no such session"}), 404
     with entry["lock"]:

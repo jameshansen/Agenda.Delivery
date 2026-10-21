@@ -31,8 +31,20 @@ _HREF = re.compile(r"""href=["']([^"']+)["']""", re.I)
 
 
 def _get(url: str, timeout: int = 15):
-    return requests.get(url, headers={"User-Agent": USER_AGENT},
-                        allow_redirects=True, timeout=timeout)
+    """GET a page or document from a council site. Redirects are followed by
+    hand so every hop is checked: council pages are untrusted, and these
+    containers sit on the Docker network beside Postgres and Redis, so a
+    public URL that redirects inward would otherwise be fetched."""
+    for _ in range(8):
+        parts = urlparse(url)
+        if parts.scheme not in ("http", "https") or not mailer.public_host(parts.hostname or ""):
+            raise ValueError(f"refused a non-public address: {url}")
+        res = requests.get(url, headers={"User-Agent": USER_AGENT},
+                           allow_redirects=False, timeout=timeout)
+        if not (res.is_redirect and res.headers.get("location")):
+            return res
+        url = urljoin(url, res.headers["location"])
+    raise ValueError(f"too many redirects, last {url}")
 
 
 def extract_domain(url: str) -> str:
@@ -291,8 +303,6 @@ def _document_text(url: str, max_pages: int = 20) -> tuple[str, int, bool]:
     """(text, pages, is_pdf) for a meeting document, PDF or HTML, decided by
     the response. Public addresses only, like every other user-facing fetch.
     Coquitlam's agenda PDF was read as HTML and summarized from a popup."""
-    if not mailer.public_host(urlparse(url).hostname or ""):
-        return "", 0, False
     res = _get(url, 60)
     if not res.ok:
         return "", 0, False
@@ -306,16 +316,9 @@ def _document_text(url: str, max_pages: int = 20) -> tuple[str, int, bool]:
 
 
 def _pdf_text(pdf_url: str, max_pages: int = 20) -> tuple[str, int]:
-    """Download + extract text from the first max_pages of a PDF. SSRF-guarded."""
-    if not (pdf_url.startswith("http://") or pdf_url.startswith("https://")):
-        raise ValueError("PDF URL must be HTTP(S)")
-    host = (urlparse(pdf_url).hostname or "").lower()
-    if (host in ("localhost", "0.0.0.0") or host.startswith("127.")
-            or host.startswith("10.") or host.startswith("192.168.")
-            or host.startswith("169.254.") or host.endswith(".local")
-            or re.match(r"^172\.(1[6-9]|2\d|3[01])\.", host)):
-        raise ValueError("PDF URL points to a private/internal address")
-    res = requests.get(pdf_url, headers={"User-Agent": USER_AGENT}, timeout=120)
+    """Download + extract text from the first max_pages of a PDF. Public
+    addresses only, every redirect hop included (_get)."""
+    res = _get(pdf_url, 120)
     if not res.ok:
         return "", 0
     from pypdf import PdfReader  # local import keeps container start fast
