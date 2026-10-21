@@ -7,7 +7,7 @@ export default async function SiteHeader() {
 
   return (
     <header className="border-b border-black/5">
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-4 py-4 sm:px-6">
+      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-4">
         <Link href="/" className="shrink-0 whitespace-nowrap text-xl tracking-tight sm:text-2xl">
           <span className="text-green-dark">agenda</span>
           <span className="text-green">.delivery</span>

@@ -229,7 +229,7 @@ function ListsSection({
         }
       />
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         {lists.map((l) => {
           const recipients = l.audience === "all" ? activeCount : l.subscriberIds.length;
           const tpl = templates.find((t) => t.id === l.templateId);
@@ -332,7 +332,7 @@ function ListDialog({
 
   return (
     <Dialog title={list ? "Edit mailing list" : "New mailing list"} onClose={onClose} wide>
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <div className="space-y-3">
           <div>
             <label className={labelCls}>Name</label>
@@ -860,7 +860,7 @@ function TemplatesSection({
         }
       />
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {templates.map((t) => (
           <Card key={t.id} className="flex flex-col">
             <div className="flex items-start justify-between gap-2">
@@ -1411,7 +1411,7 @@ function SendingSection({
             </p>
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className={labelCls}>From address</label>
                   <input value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} className={inputCls} placeholder="news@yourdomain.org" />
@@ -1441,7 +1441,7 @@ function SendingSection({
 
               {provider === "smtp" && (
                 <>
-                  <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_7rem]">
                     <div>
                       <label className={labelCls}>SMTP host</label>
                       <input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} className={inputCls} placeholder="smtp.yourdomain.org" />
@@ -1456,7 +1456,7 @@ function SendingSection({
                       />
                     </div>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className={labelCls}>Username</label>
                       <input value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} className={inputCls} autoComplete="off" />

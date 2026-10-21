@@ -111,7 +111,7 @@ export default async function ModulePage({
           </a>
         )}
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Main column */}
           <div className="lg:col-span-2 space-y-10">
             {/* Summary */}

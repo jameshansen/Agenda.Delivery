@@ -81,7 +81,7 @@ export default function AccountManager({
       )}
 
       {/* Three-column flowchart */}
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1.2fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_1.2fr]">
         {/* Column 1: Subscriptions */}
         <section>
           <div className="mb-2 flex items-center gap-2">

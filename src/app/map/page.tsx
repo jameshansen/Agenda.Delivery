@@ -36,7 +36,7 @@ export default async function MapPage() {
           ))}
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Map panel */}
           <div className="lg:col-span-2">
             {pinned.length === 0 ? (

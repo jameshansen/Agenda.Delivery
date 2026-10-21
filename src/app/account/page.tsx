@@ -13,7 +13,7 @@ export default async function AccountPage() {
   const firstName = (data.profile.name || session.user.name)?.split(" ")[0];
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
+    <main className="mx-auto w-full max-w-5xl px-6 py-8">
       {/* Sign out lives in the site header, and again under Account and API. */}
       <div className="min-w-0">
         <h1 className="text-3xl sm:text-4xl">

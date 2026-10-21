@@ -13,7 +13,7 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
       <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-900/80 backdrop-blur">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <nav className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
           <span className="text-lg font-semibold">Admin</span>
           <div className="flex gap-4">
             <Link href="/admin" className="text-sm text-neutral-300 hover:text-white">
@@ -28,7 +28,7 @@ export default async function AdminLayout({
           </div>
         </nav>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-5xl px-6 py-6">{children}</main>
     </div>
   );
 }
