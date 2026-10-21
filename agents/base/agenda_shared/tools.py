@@ -994,7 +994,7 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                 # no reason given.
                 for attempt in range(2):
                     try:
-                        state = requests.get(f"{BROWSER_URL}/session/{sid}/state?max_chars=2500", timeout=90).json()
+                        state = requests.get(f"{BROWSER_URL}/session/{sid}/state?max_chars=4000", timeout=90).json()
                     except Exception as e:
                         state = {"ok": False, "error": str(e)}
                     if state.get("ok"):
@@ -1049,7 +1049,10 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                           "It must be one meeting's agenda, never correspondence, a notice, a schedule or a "
                           "folder of documents. Portals often list a category's meetings oldest first, so "
                           "compare the dates across the whole list before calling one the most recent. "
-                          "You see visible_text, elements, and pdf_links_seen. "
+                          "You see visible_text, elements, and pdf_links_seen. steps_so_far is what you already "
+                          "did on this site: never repeat a step that led nowhere. If a tab, list or page showed "
+                          "no agenda (\"no upcoming meetings\", \"documents will be posted when available\"), try "
+                          "something else, such as a Past meetings tab, an archive, or an older meeting. "
                           "Respond JSON only: "
                           '{"action":"click"|"goto"|"type"|"done"|"fail","ref":str|null,"url":str|null,'
                           '"text":str|null,"submit":bool|null,"title":str|null,'
@@ -1057,9 +1060,13 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                 user = json.dumps({
                     "today": today, "step": step,
                     "current_url": state.get("url"), "current_title": state.get("title"),
-                    "visible_text": (state.get("text") or "")[:1500],
+                    "visible_text": (state.get("text") or "")[:3000],
                     "elements": elements,
                     "pdf_links_seen": (links.get("pdfs") or [])[:15],
+                    # Without these each step started over: DNV reopened a
+                    # committee page with nothing posted, and Kelowna clicked
+                    # an empty Upcoming tab, eight times each.
+                    "steps_so_far": trail[-6:],
                 })
                 try:
                     decision = complete_json(system, user, model=model)
@@ -1071,7 +1078,8 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
                         raise
                     decision = {"action": "fail", "reason": "llm error"}
 
-                trail.append({k: decision.get(k) for k in ("action", "ref", "url", "reason")})
+                trail.append({**{k: decision.get(k) for k in ("action", "ref", "url", "reason")},
+                              "at": state.get("url")})
                 action = decision.get("action")
 
                 if emit:
