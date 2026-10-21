@@ -6,6 +6,7 @@ fetches the first agenda. The orchestrator routes on job["agent"]
 (scraper_create | scraper_repair).
 """
 import json
+import re
 from datetime import datetime, timezone
 
 from agenda_shared.agent import BaseAgent, module_by_slug
@@ -116,6 +117,9 @@ class _ScraperBase(BaseAgent):
 
     def _search_for_page(self, mod, agenda_url, links):
         domain = tools.extract_domain(mod["source_url"])
+        found = self._from_sitemap(mod, domain)
+        if found:
+            return found
         self.emit(f"The known URL ({mod['source_url']}) returned no agenda content. "
                   "Searching the web for the correct page.",
                   "web.search", f"searching for: {mod['name']} council agenda meetings")
@@ -144,6 +148,33 @@ class _ScraperBase(BaseAgent):
                     self.emit(f"Found {len(dlinks)} agenda links at {cand}.", "site.crawl", d["detail"])
                     return cand, d, dlinks
         return agenda_url, {"ok": False, "detail": "no agenda page found", "data": {}}, links
+
+    def _from_sitemap(self, mod, domain):
+        """The meetings page as the site's sitemap names it, the model choosing
+        among the pages about council meetings. (url, crawl, links) or None."""
+        # One meeting's page carries its date ("regular-council-meeting-20261005"),
+        # and DNV lists hundreds of those ahead of its meetings listing. Surrey
+        # lists thousands of reports, each deeper than its listing: shortest first.
+        pages = sorted((u for u in tools.sitemap_pages(domain)
+                        if any(k in u.lower() for k in ("council", "meeting", "agenda"))
+                        and not re.search(r"\d{6}|\d{1,2}-\d{1,2}-\d{2}", u)), key=len)[:200]
+        if not pages:
+            return None
+        system = ("These pages come from a council website's sitemap. Pick the one page that lists "
+                  "the council's meetings with their agendas, newest included: a listing, not one "
+                  "meeting's page, not an archive of past years and not a minutes page. "
+                  'Respond with JSON {"url": "..."}, or {"url": null} if none of them is that page.')
+        model_name = self.model() or AGENT_MODEL
+        cand = (complete_json(system, json.dumps(pages), model=model_name) or {}).get("url")
+        self.emit(f"The site's sitemap lists {len(pages)} pages about council meetings; "
+                  f"the meetings listing is {cand or 'not among them'}.",
+                  "site.crawl", f"sitemap of {domain}", prompt=f"SYSTEM:\n{system}",
+                  response=json.dumps({"url": cand}), model=model_name)
+        if cand not in pages:
+            return None
+        crawl = tools.site_crawl(cand)
+        links = (crawl.get("data") or {}).get("links") or []
+        return (cand, crawl, links) if crawl["ok"] and links else None
 
     def _fetch_first_agenda(self, mod, slug, repair) -> bool:
         """Returns True iff a specific, dated meeting was found and recorded --

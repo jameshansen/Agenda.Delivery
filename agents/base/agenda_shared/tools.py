@@ -9,6 +9,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone, date
+from html import unescape
 from io import BytesIO
 from urllib.parse import urljoin, urlparse
 
@@ -185,22 +186,59 @@ def site_crawl(url: str) -> dict:
             return {"ok": False,
                     "detail": f"Crawled {url} -> page not found (status {res.status_code})",
                     "data": {"links": [], "notFound": True}}
-        links = []
-        for href in _HREF.findall(html):
-            low = href.lower()
-            if any(k in low for k in ("agenda", "meeting", "council", "board",
-                                      "calendar")) or low.endswith(".pdf"):
-                try:
-                    absu = urljoin(res.url, href)
-                    if absu not in links:
-                        links.append(absu)
-                except Exception:
-                    pass
+        links = _agenda_hrefs(html, res.url)
+        if len(links) < 3:
+            # A JavaScript shell (DNV's React site) has no links until it runs.
+            rendered, final = render_html(res.url)
+            links = _agenda_hrefs(rendered, final)
         return {"ok": True,
                 "detail": f"Crawled {url}, found {len(links)} agenda-related links",
                 "data": {"links": links[:20]}}
     except Exception as e:
         return {"ok": False, "detail": f"Crawl {url} failed: {e}", "data": {}}
+
+
+def _agenda_hrefs(html: str, base: str) -> list[str]:
+    links = []
+    for href in _HREF.findall(html or ""):
+        low = href.lower()
+        if any(k in low for k in ("agenda", "meeting", "council", "board",
+                                  "calendar")) or low.endswith(".pdf"):
+            try:
+                absu = urljoin(base, href)
+                if absu not in links:
+                    links.append(absu)
+            except Exception:
+                pass
+    return links
+
+
+def sitemap_pages(domain: str) -> list[str]:
+    """Every page URL in the site's sitemap, following a sitemap index one
+    level: the site's own list of its pages. DNV moved its meetings page, and
+    its React shell has no links to crawl for the new one."""
+    queue = [f"https://{domain}/sitemap.xml"]
+    try:
+        robots = _get(f"https://{domain}/robots.txt", 10)
+        if robots.ok:
+            queue = re.findall(r"(?im)^sitemap:\s*(\S+)", robots.text) or queue
+    except Exception:
+        pass
+    pages, read = [], 0
+    while queue and read < 6:
+        read += 1
+        try:
+            res = _get(queue.pop(0), 20)
+        except Exception:
+            continue
+        if not res.ok:
+            continue
+        locs = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", res.text)
+        if "<sitemapindex" in res.text:
+            queue += locs
+        else:
+            pages += locs
+    return pages
 
 
 # -- geo.locate --------------------------------------------------
@@ -554,7 +592,9 @@ def _bare_url(url) -> str:
 
 
 def _agenda_find_latest(slug, emit=None, model=None):
-    """Find the latest agenda. Fastest path first: a previously self-tested,
+    """Find the latest agenda. A council on eSCRIBE or PrimeGov is read from
+    the portal's meeting data (platforms.find_latest). Otherwise, fastest
+    path first: a previously self-tested,
     LLM-authored extraction script (see generate_extract_script) -- pure
     HTTP, no browser, no per-check LLM cost. If it's missing or its own
     self-test fails (site changed), fall through to the cheap static/
@@ -572,6 +612,11 @@ def _agenda_find_latest(slug, emit=None, model=None):
     calling agent's configured model (self.model()), used for the nav
     loop's own LLM decisions instead of silently falling back to the
     global default."""
+    from .platforms import find_latest as portal_find_latest
+    found = portal_find_latest(slug)
+    if found:
+        return found
+
     row = db.one(
         "SELECT sc.platform, sc.extract_script FROM scrape_config sc "
         "JOIN module m ON m.id = sc.module_id WHERE m.slug = %s", (slug,))
@@ -1303,11 +1348,8 @@ def _extract_title(html: str, date_ms: float) -> str:
 def _html_to_text(html: str) -> str:
     for tag in ("script", "style", "nav", "footer", "header"):
         html = re.sub(rf"<{tag}[\s\S]*?</{tag}>", "", html, flags=re.I)
-    text = re.sub(r"<[^>]+>", "\n", html)
-    for a, b in (("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
-                 ("&quot;", '"')):
-        text = text.replace(a, b)
-    text = re.sub(r"&#\d+;", "", text)
+    # Every entity decoded: dropping numeric ones lost eSCRIBE's colons (&#58;).
+    text = unescape(re.sub(r"<[^>]+>", "\n", html)).replace("\xa0", " ")
     text = re.sub(r"\n\s*\n", "\n", text)
     text = re.sub(r"^\s+", "", text, flags=re.M)
     return text.strip()

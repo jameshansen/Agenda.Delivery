@@ -24,6 +24,12 @@ site-specific rules. It's a small decision loop, with an LLM doing the
 "where do I click next" reasoning, backed by tools that let it actually look
 at and act on a real page.
 
+## The exception: portals that publish their meeting data
+
+Two meeting platforms serve their whole calendar as public data: eSCRIBE (`MeetingsCalendarView.aspx/GetCalendarMeetings`) and PrimeGov (`/api/v2/PublicPortal/...`). Each meeting comes with its name, its real date and its agenda documents. On these portals the tiers below were the weak link. They recorded City of Langley's August 28 special meeting as October 19, and took Saanich's PrimeGov portal for a login wall when it is fully public. So `agents/base/agenda_shared/platforms.py` reads them directly, and `agenda_find_latest` tries it before anything else. A council is on one when its listing URL is a portal or its listing page links to one, which is checked on every run, so a council that moves off a portal is followed.
+
+The reader takes the newest meeting of council or its committees whose agenda is published, up to 30 days ahead, since that is when subscribers want it. It leaves out closed and cancelled meetings, Burnaby's weekly correspondence package (listed as a meeting), and a meeting whose agenda only moves to close it. It reads the HTML agenda, which both portals serve to a script; eSCRIBE's PDFs sit behind a Cloudflare check that only a browser passes. No model call is made, and a portal that cannot be read falls through to the tiers below.
+
 ## Two tiers, cheapest first
 
 Most council websites are plain server-rendered HTML: a page listing past
@@ -76,7 +82,7 @@ persists a **recipe** into `scrape_config`:
   diagnostic value: you can see *why* the agent clicked what it clicked
 - `extract_script`, a plain-HTTP `extract()` function the LLM writes from the click trail and the live links on the entry point, saved only if a dry run finds a dated meeting. A script that hard-codes a document URL is rejected when written and skipped when replayed, since it would report the same meeting on every check.
 
-Next time this module is checked, `agenda_find_latest` runs the saved script first, with no browser and no LLM call. If there is none, or it no longer finds a dated meeting, a set `platform` sends it straight to the browser tier, with no point re-trying the cheap path on a site already known to need it. If the recipe stops working (site redesign), the whole thing self-heals the same way it originally succeeded: escalate, re-navigate, re-learn.
+Next time this module is checked, `agenda_find_latest` runs the saved script first, with no browser and no LLM call. If there is none, or it no longer finds a dated meeting, the static tier runs, and the browser tier only when the static find is not one dated agenda (for a module with a `platform` set, one with at least 200 characters of agenda text). If the recipe stops working (site redesign), the whole thing self-heals the same way it originally succeeded: escalate, re-navigate, re-learn.
 
 ## Correctness is the whole point — never guess and call it success
 
@@ -136,8 +142,9 @@ until a future check or a code fix resolves it. It never gets marked
 
 | File | Role |
 |---|---|
-| `agents/base/agenda_shared/tools.py` | `_static_find_latest`, `browser_find_latest`, `agenda_find_latest` (the wrapper that ties tiers together), `listing_url`, `generate_extract_script`, `_looks_like_a_real_meeting`, `site_crawl`, `web_search`, `verify_selfcheck`, `db_save_config` |
+| `agents/base/agenda_shared/platforms.py` | The eSCRIBE and PrimeGov readers: `portal`, `escribe_meetings`, `primegov_meetings`, `ranked`, `find_latest` |
+| `agents/base/agenda_shared/tools.py` | `_static_find_latest`, `browser_find_latest`, `agenda_find_latest` (the wrapper that ties tiers together), `listing_url`, `generate_extract_script`, `_looks_like_a_real_meeting`, `site_crawl` (renders a JavaScript shell), `sitemap_pages`, `web_search`, `verify_selfcheck`, `db_save_config` |
 | `browser/app.py` | The undetected-Chrome microservice: session lifecycle, frame-aware `state`/`click`/`type`/`links` |
 | `renderer/app.py` | The lightweight headless-Chromium renderer (JS execution only, no interaction) used by the static tier |
 | `agents/checking/agent_impl.py` | Recurring check: calls `agenda_find_latest`, records a new meeting if found, sets health from that result alone |
-| `agents/scraper/agent_impl.py` | Initial setup / repair: crawls, asks the LLM to infer selectors, saves a config, then calls the same `agenda_find_latest` to confirm it actually works before declaring success |
+| `agents/scraper/agent_impl.py` | Initial setup / repair: crawls, asks the LLM to infer selectors, saves a config, then calls the same `agenda_find_latest` to confirm it actually works before declaring success. When the known page is gone, the LLM picks the meetings listing from the site's own sitemap before any guessing; DNV had moved its listing, and its React shell had no links to follow |

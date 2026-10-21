@@ -291,7 +291,40 @@ def check_tidy_title():
         assert tidy_title(kept) in (kept, "Agenda"), kept
 
 
+def check_portal_reader():
+    from datetime import date
+    from agenda_shared.platforms import _title, only_closes, portal, ranked
+
+    assert portal("https://pub-coquitlam.escribemeetings.com/") \
+        == ("escribe", "https://pub-coquitlam.escribemeetings.com")
+    assert portal("https://www.saanich.ca/agendas", '<a href="https://saanichca.primegov.com/public/portal">') \
+        == ("primegov", "https://saanichca.primegov.com")
+    assert portal("https://www.surrey.ca/council", "<a href='/agendas'>") is None
+    assert _title("REGULAR COUNCIL MEETING") == "Regular Council Meeting"
+    assert _title("COMMITTEE OF THE WHOLE") == "Committee of the Whole"
+    assert _title("Council (to follow COTW)") == "Council (to follow COTW)"
+
+    def m(title, start, url="u"):
+        return {"title": title, "start": start, "url": url, "pdf": None}
+    meetings = [
+        m("Regular Council Meeting", "2026-07-27 19:00:00"),
+        m("Special (Pre-Closed) Council Meeting", "2026-08-28 10:00:00"),
+        m("Council Correspondence and Public Notice Submissions", "2026-10-13 00:00:00"),
+        m("Inaugural Ceremony and Council Meeting", "2026-11-02 19:00:00", url=None),
+        m("Committee of the Whole - Cancelled", "2026-08-24 18:30:00"),
+        m("Board of Variance", "2026-10-14 18:00:00"),
+        m("Regular Council Meeting", "2027-01-11 19:00:00"),
+    ]
+    # City of Langley's case: July 27 was its newest agenda, not October 19.
+    assert [x["start"][:10] for x in ranked(meetings, date(2026, 10, 21))] == ["2026-07-27"]
+    assert [x["start"][:10] for x in ranked(meetings[:1] + [m("Council Meeting", "2026-11-02 19:00:00")],
+                                            date(2026, 10, 21))] == ["2026-11-02", "2026-07-27"]
+    assert only_closes("PROCEDURAL MOTION: That the meeting be closed to the public under section 90")
+    assert not only_closes("Motion to close the meeting to the public. " + "Rezoning bylaw. " * 300)
+
+
 if __name__ == "__main__":
+    check_portal_reader()
     check_listing_never_a_document()
     check_tidy_title()
     check_meeting_titles()
