@@ -132,6 +132,8 @@ def tidy_title(title: str) -> str:
     tidy = re.sub(r"\s*\((?:pdf|docx?|html?|[\d.,]+\s*[kmg]?b)\)", "", title or "", flags=re.I)
     tidy = re.sub(r"^\s*agenda\s*[-–—:|]\s*", "", tidy, flags=re.I)
     tidy = re.sub(r"\s*[-–—:|]\s*agenda\s*$", "", tidy, flags=re.I)
+    # eSCRIBE's share button: "Share Regular Council Monday, October 19, 2026".
+    tidy = re.sub(r"^\s*share\s+", "", tidy, flags=re.I)
     return re.sub(r"\s{2,}", " ", tidy).strip() or (title or "").strip()
 
 

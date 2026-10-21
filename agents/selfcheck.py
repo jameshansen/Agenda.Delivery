@@ -243,6 +243,15 @@ def check_meeting_titles():
     links = tools._links_with_text('<a href="javascript:SelectItem(3);">Minutes</a>'
                                    '<a href="/agenda/5">Agenda</a>', "https://x.test/meetings")
     assert [lk["url"] for lk in links] == ["https://x.test/agenda/5"], links
+    # eSCRIBE agenda PDFs: no .pdf in the URL, so tell them by the response.
+    from types import SimpleNamespace
+    assert tools._is_pdf_response(SimpleNamespace(content=b"%PDF-1.7\n", headers={}))
+    assert tools._is_pdf_response(SimpleNamespace(content=b"x", headers={"content-type": "application/pdf"}))
+    assert not tools._is_pdf_response(SimpleNamespace(content=b"<!doctype html>", headers={"content-type": "text/html"}))
+    escribe_page = ('<a href="FileStream.ashx?DocumentId=2801">Agenda</a>'
+                    '<a href="Meeting.aspx?Id=1">Meeting</a>')
+    assert tools._find_pdfs(escribe_page, "https://pub-coquitlam.escribemeetings.com/x") == [
+        "https://pub-coquitlam.escribemeetings.com/FileStream.ashx?DocumentId=2801"]
     surrey = "https://www.surrey.ca/council/council-committee-commission-board-and-task-force-minutes"
     assert tools.listing_url({"agenda_url": surrey}, {"source_url": surrey}) == "https://www.surrey.ca/"
 
@@ -259,6 +268,9 @@ def check_tidy_title():
     assert tidy_title("Agenda (PDF) - Regular Council Meeting, Wednesday, October 21, 2026")         == "Regular Council Meeting, Wednesday, October 21, 2026"
     assert tidy_title("Public Hearing Agenda (245 KB)") == "Public Hearing Agenda"
     assert tidy_title("Agenda: Special Council Meeting") == "Special Council Meeting"
+    assert tidy_title("Share Regular Council Monday, October 19, 2026 @ 7:00 PM") \
+        == "Regular Council Monday, October 19, 2026 @ 7:00 PM"
+    assert tidy_title("Shared Services Committee") == "Shared Services Committee"
     assert tidy_title("Regular Council Meeting - July 20, 2026 - Agenda (HTML)") \
         == "Regular Council Meeting - July 20, 2026"
     assert tidy_title("Agenda – Regular Meeting (1:30 PM) and Public Hearing (7:00 PM)") \

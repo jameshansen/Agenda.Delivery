@@ -13,7 +13,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-from . import db
+from . import db, mailer
 from .llm import complete, complete_json, summarize
 from .settings import AGENT_MODEL
 from .textutil import (date_from_title, is_link_wording, is_minutes, looks_like_garbled_title,
@@ -281,6 +281,30 @@ def db_save_config(slug: str, agenda_url: str, link_selector: str,
 
 
 # -- pdf helper (SSRF-guarded) -----------------------------------
+def _is_pdf_response(res) -> bool:
+    """A PDF by what came back, not by the URL: eSCRIBE serves agenda PDFs
+    from FileStream.ashx?DocumentId=..., which no '.pdf' test catches."""
+    return res.content[:5] == b"%PDF-" or "pdf" in res.headers.get("content-type", "").lower()
+
+
+def _document_text(url: str, max_pages: int = 20) -> tuple[str, int, bool]:
+    """(text, pages, is_pdf) for a meeting document, PDF or HTML, decided by
+    the response. Public addresses only, like every other user-facing fetch.
+    Coquitlam's agenda PDF was read as HTML and summarized from a popup."""
+    if not mailer.public_host(urlparse(url).hostname or ""):
+        return "", 0, False
+    res = _get(url, 60)
+    if not res.ok:
+        return "", 0, False
+    if _is_pdf_response(res):
+        from pypdf import PdfReader  # local import keeps container start fast
+        reader = PdfReader(BytesIO(res.content))
+        total = len(reader.pages)
+        text = "\n".join((reader.pages[i].extract_text() or "") for i in range(min(max_pages, total)))
+        return text, total, True
+    return _html_to_text(res.text), 0, False
+
+
 def _pdf_text(pdf_url: str, max_pages: int = 20) -> tuple[str, int]:
     """Download + extract text from the first max_pages of a PDF. SSRF-guarded."""
     if not (pdf_url.startswith("http://") or pdf_url.startswith("https://")):
@@ -338,7 +362,8 @@ def _find_pdfs(html, base):
             url = urljoin(base, href)
         except Exception:
             continue
-        if url.lower().split('?')[0].endswith('.pdf'):
+        # eSCRIBE serves its documents from FileStream.ashx?DocumentId=...
+        if url.lower().split('?')[0].endswith(('.pdf', '/filestream.ashx')):
             if url not in seen:
                 seen.add(url)
                 out.append(url)
@@ -634,16 +659,20 @@ def _static_find_latest(slug):
         else:
             try:
                 dres = _get(url)
-                detail_html = dres.text
-                pdf_links = _find_pdfs(detail_html, url)
-                # Detail page may also be JS-rendered — render if no PDFs found.
-                if not pdf_links and _is_js_shell(detail_html):
-                    rhtml, _ = render_html(url)
-                    if rhtml:
-                        detail_html = rhtml
-                        pdf_links = _find_pdfs(detail_html, url)
-                if not title:
-                    title = _extract_title(detail_html, 0)
+                if _is_pdf_response(dres):
+                    # The pick is the agenda document itself, whatever its URL.
+                    pdf_links = [url]
+                else:
+                    detail_html = dres.text
+                    pdf_links = _find_pdfs(detail_html, url)
+                    # Detail page may also be JS-rendered — render if no PDFs found.
+                    if not pdf_links and _is_js_shell(detail_html):
+                        rhtml, _ = render_html(url)
+                        if rhtml:
+                            detail_html = rhtml
+                            pdf_links = _find_pdfs(detail_html, url)
+                    if not title:
+                        title = _extract_title(detail_html, 0)
             except Exception:
                 pass
 
@@ -742,6 +771,10 @@ def record_additional_council_meeting(module_id: str, additional: dict | None, e
     doc = additional.get("pdfUrl") or additional.get("meetingUrl")
     if doc and db.one("SELECT 1 FROM meeting WHERE module_id = %s AND coalesce(pdf_url, meeting_url) = %s",
                       (module_id, doc)):
+        return
+    # Nor when a meeting that day is already on file: on Coquitlam it was the
+    # main find again, through the meeting's share link.
+    if db.one("SELECT 1 FROM meeting WHERE module_id = %s AND date::date = %s::date", (module_id, mdate)):
         return
     db.execute(
         """INSERT INTO meeting (module_id, date, title, kind, pages, pdf_url, meeting_url)
@@ -942,25 +975,12 @@ def browser_find_latest(slug, max_steps=8, emit=None, model=None):
         if not found:
             return {"ok": False, "detail": "Browser navigation exhausted without finding a specific agenda", "data": {"trail": trail}}
 
-        is_pdf = picked_url.lower().split("?")[0].endswith(".pdf")
-        pdf_text, pages = "", 0
-        if is_pdf:
-            try:
-                pdf_text, pages = _pdf_text(picked_url)
-            except Exception as e:
-                print(f"[browser_find_latest] PDF extract skipped: {e}")
-
-        agenda_text = ""
-        if not pdf_text and not is_pdf:
-            try:
-                res = requests.get(picked_url, timeout=20)
-                if res.ok:
-                    agenda_text = _html_to_text(res.text)
-                else:
-                    agenda_text = state.get("text", "")
-            except Exception:
-                agenda_text = state.get("text", "")
-        final_text = (pdf_text or agenda_text)[:12000]
+        try:
+            doc_text, pages, is_pdf = _document_text(picked_url)
+        except Exception as e:
+            print(f"[browser_find_latest] document text skipped: {e}")
+            doc_text, pages, is_pdf = "", 0, False
+        final_text = (doc_text or state.get("text", ""))[:12000]
 
         hay = (picked_url + (mod["source_url"] or "")).lower()
         platform_guess = None
