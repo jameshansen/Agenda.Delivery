@@ -15,6 +15,7 @@ import types
 class FakeRedis:
     def __init__(self):
         self.items: list[str] = []
+        self.hash: dict = {}
 
     def lrange(self, key, start, end):
         return list(self.items)
@@ -27,6 +28,12 @@ class FakeRedis:
 
     def get(self, key):
         return None
+
+    def hgetall(self, key):
+        return {k.encode(): str(v).encode() for k, v in self.hash.items()}
+
+    def hset(self, key, field, value):
+        self.hash[field] = value
 
 
 def _stub(redis):
@@ -111,6 +118,12 @@ def main():
     assert _already_queued(r, popped) is True          # one copy left: skip
     popped = r.items.pop(0)
     assert _already_queued(r, popped) is False         # last copy: run it
+
+    # The scheduler's last run times outlive a restart, so a deploy resumes
+    # the schedule instead of re-checking every council.
+    from app import _load_last, _mark
+    _mark({}, "checking", 1792550000.0)
+    assert _load_last() == {"checking": 1792550000.0}, _load_last()
 
     print("ok - queue holds one copy per pending job")
 

@@ -117,13 +117,35 @@ def _worker_loop() -> None:
 KICK_DELAY_SECS = 120  # let postgres/redis/agents settle, then run the first pass
 
 
+LAST_RUN_KEY = "orchestrator:last_run"
+
+
+def _load_last() -> dict[str, float]:
+    """When each scheduled sweep last went out. Kept in Redis: in memory, every
+    restart (so every deploy) forgot it and re-checked every council two
+    minutes after boot, a full round of model calls each time."""
+    try:
+        stored = redis_client().hgetall(LAST_RUN_KEY) or {}
+        return {(k.decode() if isinstance(k, bytes) else k): float(v) for k, v in stored.items()}
+    except Exception as e:  # noqa: BLE001 -- start fresh rather than not at all
+        print(f"[scheduler] could not read last run times: {e}", flush=True)
+        return {}
+
+
+def _mark(last: dict[str, float], sweep: str, now: float) -> None:
+    last[sweep] = now
+    try:
+        redis_client().hset(LAST_RUN_KEY, sweep, now)
+    except Exception as e:  # noqa: BLE001
+        print(f"[scheduler] could not store last run time: {e}", flush=True)
+
+
 def _scheduler_loop() -> None:
-    # Empty `last` => everything is due at boot. We fire the first pass once
-    # KICK_DELAY_SECS have elapsed (not a full interval later) so a redeploy
-    # doesn't postpone autonomous runs by 6h. Spider only enqueues one job, so
-    # a boot kick is harmless (and it's disabled anyway).
+    # A sweep with no stored last run is due at boot: we fire it once
+    # KICK_DELAY_SECS have elapsed (not a full interval later). After that a
+    # restart resumes the stored schedule rather than starting over.
     boot = time.time()
-    last: dict[str, float] = {}
+    last = _load_last()
     while True:
         try:
             now = time.time()
@@ -143,19 +165,19 @@ def _scheduler_loop() -> None:
                 for m in mods:
                     enqueue({"flow": "pipeline", "slug": m["slug"],
                              "trigger": "scheduled update"})
-                last["checking"] = now
+                _mark(last, "checking", now)
             ss = _schedule_secs("spider", SPIDER_SECS_DEFAULT)
             if ss and now - last.get("spider", 0) >= ss:
                 flow = "spider_active" if _spider_mode() == "active" else "spider"
                 enqueue({"flow": flow, "trigger": "scheduled update"})
-                last["spider"] = now
+                _mark(last, "spider", now)
             # Escalation: sweeps failed runs, bad output and site errors,
             # and emails the admin about anything new.
             es = _schedule_secs("escalation", ESCALATION_SECS_DEFAULT)
             if es and now - last.get("escalation", 0) >= es:
                 enqueue({"flow": "agent", "agent": "escalation",
                          "trigger": "scheduled update"})
-                last["escalation"] = now
+                _mark(last, "escalation", now)
             # Mailing lists: cheap, self-gating (only sends when a list's
             # threshold or schedule is actually due). Check once a minute.
             if now - last.get("mailing", 0) >= 60:
