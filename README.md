@@ -1,28 +1,42 @@
-<p align="center"><img src="public/icon.png" width="96" alt=""></p>
+<p align="center"><img src="public/icon.png" width="128" alt="agenda.delivery icon"></p>
 
-# agenda.delivery
+<h1 align="center">agenda.delivery</h1>
 
-**Know what's on the agenda before it's decided.**
+<p align="center"><b>Know what's on the agenda before it's decided.</b><br>agenda.delivery watches the public meetings of councils, school boards and other organizations. Each organization you add gets its own AI agent, which reads the agendas and meeting video transcripts as they're posted, writes plain language summaries in the style you choose, keeps track of the items still working their way through, and sends the news to your email, a mailing list, a Discord channel, a WhatsApp group, your phone through Pushover, or a webhook.</p>
 
-agenda.delivery watches the public meetings of councils, school boards and other organizations. Each organization you add gets its own AI agent, which reads the agendas and meeting video transcripts as they're posted, writes plain language summaries in the style you choose, keeps track of the items still working their way through, and sends the news to your email, a mailing list, a Discord channel, a WhatsApp group, your phone through Pushover, or a webhook.
+<p align="center"><a href="https://agenda.delivery"><b>Use it at agenda.delivery</b></a></p>
 
-**Use it at [agenda.delivery](https://agenda.delivery).** An account is free. New accounts join with a sign-up code, or by filling in a short registration that an admin approves.
+<p align="center"><img src="docs/screenshots/monitor.png" width="800" alt="A monitor's page, showing a summary of a council meeting"></p>
+
+An account is free. New accounts join with a sign-up code, or by filling in a short registration that an admin approves.
 
 ## Background
 
-agenda.delivery started with Todd, an AI agent I created for Strong Towns Langley, whose tasks include generating summaries of the Township of Langley and City of Langley council meetings so our members know what's coming up and when there's a chance to speak. This site opens the same idea up to anyone, from a resident keeping an eye on their own community to a group that needs to know what's being decided at council, a school board or any other organization that posts its meetings.
+agenda.delivery started with [Todd](https://strongtownslangley.org/todd/), an AI agent I created for Strong Towns Langley, whose tasks include generating summaries of the Township of Langley and City of Langley council meetings so our members know what's coming up and when there's a chance to speak. This site opens the same idea up to anyone, from a resident keeping an eye on their own community to a group that needs to know what's being decided at council, a school board or any other organization that posts its meetings.
 
 It's a small project running on a single $20/month server and a $20/month Ollama Cloud plan, so it's built to be as light as possible. There's no framework and no container stack, just PHP, one SQLite database and a lightweight AI agent for each organization, which keeps the cost of adding another organization close to nothing.
 
 ## Features
 
 - **Monitors.** A monitor is one organization you follow. Paste its website and an AI agent fills in its name, type, agenda page and meeting videos for you, or you can fill those in yourself. Each monitor has its own agent, and if someone else already follows the same page, yours starts with what theirs has learned about the site.
+
+<p align="center"><img src="docs/screenshots/dashboard.png" width="800" alt="The monitors page, with the form to add a monitor"></p>
+
 - **Meeting types.** While setting up, the agent works out which kinds of meetings the organization holds (regular council, public hearings, committees and so on), and you choose which ones to follow.
 - **Summaries your way.** The summary designer starts from a template (plain language, Strong Towns topics, cycling and active transportation, decisions only, housing and land use, or a short alert) that you can change however you like, and previews it on the latest agenda. When an item comes back to council, the summary says where it stood.
+
+<p align="center"><img src="docs/screenshots/summary-designer.png" width="800" alt="The summary designer, with its templates and instructions"></p>
+
 - **Agendas and videos.** The agent finds each new agenda and writes its summary. Add a video page or YouTube channel and it summarizes each meeting from its captions, with members' names corrected. A new monitor's first check saves what's already posted without sending it, so you only hear about meetings that appear after you add it.
 - **Pending items.** Bylaws between readings, motions waiting on a staff report, deferred items and scheduled public hearings stay listed on the monitor's page until they're settled.
 - **Notifications.** Your own email address is always a destination, and a new monitor sends its summaries there. Add other email addresses, mailing lists, Discord webhooks, a WhatsApp group, Pushover or a JSON webhook, then choose for each monitor which destinations get its news and what each one gets, whether that's the summary, just the link, the lines that match your keywords, or the answer to your own question. Email can arrive as each update happens or as one daily or weekly digest. Any destination can be paused, and a history shows what was sent, what stayed quiet and what failed.
+
+<p align="center"><img src="docs/screenshots/notifications.png" width="800" alt="The Notifications page, listing destinations"></p>
+
 - **Mailing lists.** Name a list, paste or import its addresses, and use it as a destination. Each address gets a confirmation link and receives nothing until its owner uses that link. Every email has an unsubscribe link that works without signing in, and an address that unsubscribes can only be added back by its owner. A list can have opening and closing text, and replies can come to you. Its Preview tab shows a sample email as the people on it will see it, and Send me a test sends you that sample.
+
+<p align="center"><img src="docs/screenshots/mailing-list-preview.png" width="800" alt="A mailing list's Preview tab, showing a sample email"></p>
+
 - **Your own look.** A mailing list sends as agenda.delivery, or as custom with an organization name, logo and colours, using either the ones in your Settings or its own. Colours come from 5 presets or your own picks, with a live preview. Logos are PNG, JPEG or WebP, up to 500 KB and 1200 pixels across. Mail to your own address always uses the agenda.delivery design.
 - **WhatsApp.** Link a WhatsApp account by scanning a code on the Notifications page, as you would for WhatsApp Web, then choose one of its groups to send to. It only ever sends to groups. If the link drops for more than 10 minutes, you get an email. It links as an unofficial device, which WhatsApp may restrict, so a spare number is safest.
 - **Pushover.** Updates go to your phone through the Pushover app. Once the site's Pushover app token is set in the config you only need your user key, and until then you add an app token of your own as well.
