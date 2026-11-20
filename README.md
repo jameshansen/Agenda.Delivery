@@ -100,6 +100,10 @@ php tests/check.php
 
 Set `data_dir` in `config.php` to a local folder, and `mail_capture` to a file to collect outgoing mail there. The agents and the service need Linux. `testcouncil/testcouncil.py` serves made-up councils whose meetings and layout you can change, for trying agents against.
 
+## AI use disclosure
+
+agenda.delivery was built using [Claude Code](https://claude.com/claude-code) with Claude Opus 5.5 and Claude Fable 5.2.
+
 ## Licence
 
 GPL-3.0. See [LICENSE](LICENSE).
