@@ -1,0 +1,174 @@
+/* Site styles on top of Opalite. */
+
+/* Grey-blue in place of Opalite's orange-red for buttons, links and the default section colour. Red stays for errors. */
+:root{--o-primary:#a3b5d0;--o-link:light-dark(#3e5a80,#b0c3de);--o-accent-main:#a3b5d0}
+
+/* The page fills the window, so the footer sits at the bottom even when there's little above it. */
+.page{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
+.page>main{flex:1}
+
+.navbar-brand img{flex-shrink:0}
+.navbar{flex-wrap:nowrap}
+.navbar .navbar-nav-open{display:flex;flex-basis:auto;flex-direction:row;align-items:center;gap:1rem;padding:0}
+.summary{white-space:pre-line}
+/* Example text in fields is faint and clears as soon as the field is clicked. */
+.input::placeholder{color:var(--o-muted);opacity:.45}
+.input:focus::placeholder{color:transparent}
+.state{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;background:var(--o-secondary);margin-inline-end:.35rem}
+.state-enabled{background:var(--o-success)}
+.state-error{background:var(--o-danger)}
+.state-pending,.state-paused{background:var(--o-warning)}
+.prose{max-width:38em}
+.prose p{margin-bottom:1rem}
+.small{font-size:.9rem}
+.accordion summary .when{margin-inline-start:auto;padding-inline:1rem;font-size:.85rem;font-weight:400;color:var(--o-muted);white-space:nowrap}
+.badge.status{border-radius:var(--o-r-xs);white-space:normal;line-height:1.35;text-align:start}
+.btn .fa-fw,.nav-link .fa-fw{margin-inline-end:.15em}
+
+/* Each section has its own Opalite colour, used for its tab strip, heading chips and node bars. */
+.panel,.accent-orange{--accent:var(--o-accent-main)}
+.panel[data-section=monitors],.accent-mint{--accent:var(--o-mint)}
+.panel[data-section=notifications],.accent-blue{--accent:var(--o-blue)}
+.panel[data-section=settings],.accent-yellow{--accent:var(--o-yellow)}
+
+/* A panel: one raised container per section, its tabs along the top on a band of its colour. */
+.panel{padding:0;overflow:hidden}
+.panel-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.25rem;
+  background:color-mix(in srgb,var(--accent) 28%,var(--o-bg));border-bottom:1px solid var(--o-line)}
+.panel-head .nav-tabs{background:color-mix(in srgb,var(--o-bg) 55%,transparent)}
+.panel-head .nav-link.active .fa-fw,.panel-body>.nav-tabs .nav-link.active .fa-fw{color:color-mix(in srgb,var(--accent) 45%,var(--o-ink))}
+.panel-body{padding:1.5rem 1.25rem}
+.panel-body>.nav-tabs{margin-bottom:1rem}
+
+/* Section headings carry a round chip in the section's colour with an icon in it. */
+.section-title{display:flex;align-items:center;gap:.6rem;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--o-muted);margin:2rem 0 .9rem}
+.section-title:first-child{margin-top:0}
+.chip{display:inline-grid;place-items:center;flex-shrink:0;width:1.9rem;height:1.9rem;border-radius:50%;
+  background:var(--c,var(--accent,var(--o-accent-main)));color:#16191d;font-size:.8rem;letter-spacing:0;box-shadow:var(--o-up-sm)}
+h3 .chip{width:1.7rem;height:1.7rem;font-size:.75rem;margin-inline-end:.5rem}
+
+/* Nodes: the items in a panel, all one width, each with its own actions and a bar in its colour. */
+.nodes{display:flex;flex-direction:column;gap:.75rem}
+.node{position:relative;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.25rem 1rem 1.9rem;
+  border-radius:var(--o-r-sm);background:var(--o-bg);box-shadow:var(--o-up-sm)}
+.node::before{content:"";position:absolute;inset-block:.85rem;inset-inline-start:.75rem;width:5px;border-radius:99px;background:var(--c,var(--accent,var(--o-secondary)))}
+.node.is-error{--c:var(--o-red)}
+.node.is-quiet{--c:var(--o-secondary)}
+.node-main{flex:1;min-width:0;color:inherit;text-decoration:none}
+a.node-main:hover .node-title{color:var(--o-link)}
+.node-title{font-weight:600;font-size:1.05rem;overflow-wrap:anywhere}
+.node-title .fa-fw{color:color-mix(in srgb,var(--c,var(--accent,var(--o-ink))) 55%,var(--o-ink));margin-inline-end:.25rem}
+.node-meta{margin-top:.15rem;color:var(--o-muted);font-size:.9rem;overflow-wrap:anywhere}
+.node-actions{display:flex;flex-wrap:wrap;gap:.5rem;flex-shrink:0}
+.node-actions form{margin:0}
+.node-empty{padding:1rem 1.25rem;border-radius:var(--o-r-sm);box-shadow:var(--o-down);color:var(--o-muted)}
+/* Adding a node: a pressed-in node of the same width, under the list, edged in the section's colour. */
+.node-add{display:block;margin-top:.75rem;padding:1.25rem;border-radius:var(--o-r-sm);box-shadow:var(--o-down);
+  border:2px dashed color-mix(in srgb,var(--accent,var(--o-accent-main)) 55%,transparent)}
+.node-add>h3{display:flex;align-items:center;font-size:1rem;margin:0 0 1rem}
+.node-add>h3:not(:first-of-type){margin-top:1.75rem}
+.node-add .row{--o-gap:1rem}
+@media (max-width:575.98px){.node{flex-direction:column;align-items:stretch}.node-actions{justify-content:flex-start}}
+
+/* Notifications. A node with has-edit carries a form that opens across its full width; compact nodes are for long
+   lists such as a mailing list's addresses and the history. */
+[hidden]{display:none!important}
+.node.has-edit{flex-wrap:wrap}
+.node-edit{flex-basis:100%;margin:0;padding-top:1rem;border-top:1px solid var(--o-line)}
+.node-compact{padding-block:.6rem}
+.node-compact::before{inset-block:.55rem}
+.node-compact .node-title{font-size:.98rem}
+.node-title .badge{margin-inline-start:.35rem}
+.node-title .to{margin-inline:.5rem;color:var(--o-muted)}
+.node-title a{color:inherit;text-decoration:none}
+.node-title a:hover{color:var(--o-link)}
+.fw-normal{font-weight:400}
+
+/* Logos, and a mailing list's preview: the email as it arrives, on a paper-coloured sheet whatever the theme. */
+.logo-thumb{display:block;max-width:9rem;max-height:3.5rem;border-radius:var(--o-r-xs);background:#fff;padding:.3rem;box-shadow:var(--o-up-sm)}
+.logo-current{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem 1rem;margin-bottom:.75rem}
+.brand-summary{--c:var(--o-blue);justify-content:flex-start}
+.mail-preview{border-radius:var(--o-r-sm);box-shadow:var(--o-down);overflow:hidden}
+.mail-head{display:grid;grid-template-columns:max-content 1fr;gap:.3rem 1rem;margin:0;padding:1rem 1.25rem;border-bottom:1px solid var(--o-line);font-size:.92rem;overflow-wrap:anywhere}
+.mail-head dt{color:var(--o-muted)}
+.mail-head dd{margin:0}
+.mail-body{padding:1.5rem .75rem;background:#eef1f5;overflow-wrap:anywhere}
+.mail-plain{margin-top:1rem}
+.mail-plain summary{cursor:pointer;color:var(--o-muted);font-weight:500}
+.mail-plain pre{margin:.75rem 0 0;padding:1rem 1.25rem;border-radius:var(--o-r-sm);box-shadow:var(--o-down);white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}
+.breadcrumb.small{margin:0 0 1rem}
+
+/* Settings: a choice of two, as raised options. */
+.options{display:flex;flex-wrap:wrap;gap:.75rem}
+.option{display:flex;align-items:center;gap:.6rem;padding:.75rem 1.1rem;border-radius:var(--o-r-sm);box-shadow:var(--o-up-sm);cursor:pointer;font-weight:500}
+.option:has(input:checked){box-shadow:var(--o-down);color:var(--o-link)}
+.option input{accent-color:var(--o-primary)}
+
+/* The footer: a darker pressed-in bar at the bottom of the window. */
+.site-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem 2rem;margin:1.5rem 0;padding:1.1rem 1.5rem;
+  border-radius:var(--o-r);background:color-mix(in srgb,var(--o-lo) 45%,var(--o-bg));box-shadow:var(--o-down)}
+.footer-links{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem}
+.footer-links a{color:var(--o-muted);text-decoration:none;font-weight:500}
+.footer-links a:hover{color:var(--o-link)}
+@media (max-width:575.98px){
+  .panel-head,.panel-body{padding-inline:.9rem}
+  .panel-head .nav-tabs{flex-wrap:nowrap;gap:0}
+  .panel-head .nav-tabs .nav-link{padding:.5em .6em;font-size:.88rem;white-space:nowrap}
+  .panel-head .nav-tabs .nav-link .fa-fw{display:none}
+  /* The monitor's own tabs stay on one row and scroll sideways rather than stacking. */
+  .panel-body>.nav-tabs{display:flex;flex-wrap:nowrap;max-width:100%;overflow-x:auto;scrollbar-width:none}
+  .panel-body>.nav-tabs .nav-link{white-space:nowrap}
+}
+.steps-plain{padding-inline-start:1.25rem;margin-bottom:1rem}
+.steps-plain li{margin-bottom:.6rem}
+.steps-plain li::marker{color:var(--o-muted);font-weight:600}
+
+/* A section loading after a tab click. */
+main.is-loading{opacity:.55;transition:opacity .15s .1s;pointer-events:none}
+
+/* The scan bubble at the top of Add a monitor, with a status line that pulses while the agent works. */
+.scan-bubble{margin-bottom:1.25rem;padding:1rem 1.1rem;border-radius:var(--o-r-sm);background:color-mix(in srgb,var(--o-accent-main) 18%,var(--o-bg));box-shadow:var(--o-up-sm)}
+.scan-row{display:flex;gap:.75rem;align-items:center}
+.scan-row .btn{flex-shrink:0}
+.scan-status{margin-top:.6rem;color:var(--o-muted)}
+.scan-status[data-kind=busy]{color:var(--o-ink);animation:o-pulse 1.6s ease-in-out infinite}
+.scan-status[data-kind=busy]::before{content:"";display:inline-block;width:.7em;height:.7em;margin-inline-end:.5em;border:2px solid var(--o-line);border-top-color:var(--o-link);border-radius:50%;vertical-align:-.05em;animation:o-spin .7s linear infinite}
+.scan-status[data-kind=ok]{color:var(--o-link);font-weight:500}
+.scan-status[data-kind=error]{color:var(--o-danger)}
+
+/* Mailing lists: the lists down the left, the open one on the right. */
+.lists-layout{display:grid;grid-template-columns:15rem minmax(0,1fr);gap:1.5rem;align-items:start;margin-top:1rem}
+.list-rail{display:flex;flex-direction:column;gap:1rem;position:sticky;top:1rem}
+.list-rail-items{display:flex;flex-direction:column;gap:.5rem}
+.list-rail-item{display:block;padding:.65rem .85rem;border-radius:var(--o-r-sm);color:inherit;text-decoration:none;box-shadow:var(--o-up-sm);border-left:4px solid transparent}
+.list-rail-item:hover .list-rail-name{color:var(--o-link)}
+.list-rail-item.active{box-shadow:var(--o-down);border-left-color:var(--o-accent-main)}
+.list-rail-name{display:block;font-weight:600;overflow-wrap:anywhere}
+.list-rail-name .fa-fw{margin-inline-end:.3rem;opacity:.7}
+.list-rail-meta{display:block;font-size:.8rem;color:var(--o-muted);margin-top:.1rem}
+.list-rail-new{display:flex;flex-direction:column;gap:.5rem;padding:.85rem;border-radius:var(--o-r-sm);box-shadow:var(--o-down)}
+.list-detail{min-width:0}
+@media (max-width:767.98px){.lists-layout{grid-template-columns:1fr}.list-rail{position:static}}
+
+/* The email colour picker: presets as swatches, the three colour boxes, and a small preview email. */
+.colour-picker{display:flex;flex-direction:column;gap:.6rem}
+.colour-presets{display:flex;flex-wrap:wrap;gap:.5rem}
+.colour-preset{display:inline-flex;align-items:center;gap:.45rem;padding:.35rem .7rem .35rem .4rem;border:0;border-radius:99px;background:var(--o-bg);box-shadow:var(--o-up-sm);font:inherit;font-size:.85rem;color:inherit;cursor:pointer}
+.colour-preset:active{box-shadow:var(--o-down)}
+.colour-swatch{display:inline-flex;gap:3px;padding:4px;border-radius:99px;border:1px solid var(--o-line)}
+.colour-swatch i{display:block;width:12px;height:12px;border-radius:50%}
+.colour-inputs{display:flex;flex-wrap:wrap;gap:1rem}
+.colour-input{display:inline-flex;align-items:center;gap:.45rem;font-size:.9rem}
+.colour-input input{width:2.6rem;height:2rem;padding:0;border:0;border-radius:8px;background:none;cursor:pointer}
+.colour-preview{max-width:34rem;border-radius:var(--o-r-sm);overflow:hidden;box-shadow:var(--o-down);font-size:.8rem}
+.colour-preview table{font-size:inherit}
+
+/* A WhatsApp destination's linking panel: its state, and the code to scan until it's linked. */
+.wa-holder{border-top:0;padding-top:.5rem}
+.wa-state{margin:0 0 .5rem;font-weight:600}
+.wa-is-open{color:var(--o-success)}
+.wa-is-closed,.wa-is-logged_out{color:var(--o-danger)}
+.wa-link{display:flex;flex-wrap:wrap;align-items:center;gap:1.25rem}
+.wa-qr{width:220px;height:220px;padding:10px;border-radius:var(--o-r-sm);background:#fff;box-shadow:var(--o-up-sm)}
+.wa-link ol{max-width:22rem;padding-left:1.1rem}
+.node-settings .align-self-end{align-self:flex-end}

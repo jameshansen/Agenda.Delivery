@@ -1,0 +1,17 @@
+agenda.delivery, www.agenda.delivery {
+	root * /opt/agenda/public
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Pages run only their own scripts (a response that sets its own, like a logo, keeps it); styles and fonts also come from Google Fonts and cdnjs.
+		?Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data:; connect-src 'self'; form-action 'self' https://accounts.google.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+		-X-Powered-By
+		-Server
+	}
+	php_fastcgi unix//run/php/agenda.sock
+	file_server
+}

@@ -1,0 +1,44 @@
+[Unit]
+Description=agenda delivery service: runs agenda.delivery's agents and their tools
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=agenda
+# Chrome's driver and profiles live with the data, since ProtectHome hides /home.
+Environment=HOME=/var/lib/agenda
+Group=agenda
+ExecStart=/usr/bin/python3 /opt/agenda/bin/agenda-delivery-service.py
+Restart=always
+RestartSec=5
+# The API socket lives here, readable by the agenda user (php-fpm and adtool run as agenda too).
+RuntimeDirectory=agenda-delivery
+RuntimeDirectoryMode=0750
+Nice=5
+# Every gateway, run and Chrome instance is a child of this service and shares this ceiling.
+MemoryMax=3G
+KillMode=control-group
+TimeoutStopSec=30
+# The service, its agents and Chrome can write only their own data; the code, config and the rest of the system are read-only.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/agenda
+ProtectHome=yes
+PrivateTmp=yes
+# No PrivateDevices: Chrome won't start without the real /dev.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Chrome and yt-dlp follow whatever a page links to, so the cloud metadata address range is off limits for the
+# whole service. DNS goes through systemd-resolved on 127.0.0.53, outside this block.
+IPAddressDeny=169.254.0.0/16 fe80::/10
+
+[Install]
+WantedBy=multi-user.target
