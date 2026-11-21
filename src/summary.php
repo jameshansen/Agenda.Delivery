@@ -110,18 +110,16 @@ function screen_summary_prompt(string $prompt, ?int $monitorId): ?string
 
 // Writes one summary of $text (an agenda's text or a transcript) with the monitor's prompt.
 // $before limits the background to items as they stood before that time, for re-summarizing an agenda saved earlier.
-// $markdown is the monitor's own setting unless given, as the designer's preview does with its unsaved checkbox.
-function summarize(string $prompt, string $title, string $text, ?int $monitorId, ?string $before = null, ?bool $markdown = null): string
+function summarize(string $prompt, string $title, string $text, ?int $monitorId, ?string $before = null, bool $markdown = true): string
 {
     $prompt = trim($prompt) ?: default_summary_prompt();
-    $markdown ??= $monitorId === null || (bool)val('SELECT summary_markdown FROM monitor WHERE id = ?', [$monitorId]);
     $earlier = $monitorId ? pending_background($monitorId, $before) : '';
     return llm(SUMMARY_GROUND_RULES . ' ' . summary_format($markdown) . "\n\nThe writer's instructions:\n" . $prompt,
         ($earlier !== '' ? "Items still in motion from earlier meetings, as background:\n$earlier\n\n" : '')
         . "Meeting: $title\n\n" . mb_substr($text, 0, 60000), $monitorId, 'summary');
 }
 
-// Writes a new summary of a saved agenda or video with the monitor's current instructions, makes it the one
+// Writes a new summary of a saved agenda or video in the monitor's current voice, makes it the one
 // shown and sent from now on, and keeps it in the history. Returns null if there's no such item or no text.
 function rebuild_summary(array $m, string $kind, int $id): ?string
 {
@@ -130,9 +128,10 @@ function rebuild_summary(array $m, string $kind, int $id): ?string
         : row('SELECT id, title, text, found_at FROM agenda WHERE id = ? AND monitor_id = ?', [$id, $m['id']]);
     if (!$item || mb_strlen($item['text']) < 100) return null;
     // Background is as items stood when it was found, so a rebuilt summary doesn't mention what happened later.
-    $text = summarize($m['summary_prompt'], $item['title'], $item['text'], (int)$m['id'], $item['found_at']);
+    $voice = monitor_voice($m);
+    $text = summarize($voice['prompt'], $item['title'], $item['text'], (int)$m['id'], $item['found_at'], $voice['markdown']);
     q("UPDATE $kind SET summary = ? WHERE id = ?", [$text, $id]);
-    record_summary((int)$m['id'], $kind, $id, $m['summary_prompt'], $text);
+    record_summary((int)$m['id'], $kind, $id, $voice['prompt'], $text);
     return $text;
 }
 
@@ -162,4 +161,156 @@ function pending_background(int $monitorId, ?string $before = null): string
         $lines[] = "• {$p['title']}: {$p['status']}" . ($p['detail'] !== '' ? " ({$p['detail']})" : '');
     }
     return mb_substr(implode("\n", $lines), 0, 6000);
+}
+
+// ---- voices: named instructions for how summaries are written, shared across an account's monitors ---------
+
+// The account's default voice, which new monitors get. An account without any voices starts with News summary.
+function default_voice(int $uid): array
+{
+    $v = row('SELECT * FROM voice WHERE user_id = ? ORDER BY is_default DESC, id LIMIT 1', [$uid]);
+    if ($v) {
+        if (!$v['is_default']) { q('UPDATE voice SET is_default = 1 WHERE id = ?', [$v['id']]); $v['is_default'] = 1; }
+        return $v;
+    }
+    q('INSERT INTO voice (user_id, name, prompt, markdown, is_default) VALUES (?, ?, ?, 1, 1)', [$uid, 'News summary', default_summary_prompt()]);
+    return row('SELECT * FROM voice WHERE id = ?', [(int)db()->lastInsertId()]);
+}
+
+function own_voice(int $uid, int $id): ?array
+{
+    return row('SELECT * FROM voice WHERE id = ? AND user_id = ?', [$id, $uid]) ?: null;
+}
+
+// The account's voices, the default first, each with how many of its monitors use it.
+function user_voices(int $uid): array
+{
+    default_voice($uid);
+    return rows('SELECT v.*, (SELECT count(*) FROM monitor m WHERE m.voice_id = v.id) AS uses FROM voice v
+        WHERE v.user_id = ? ORDER BY v.is_default DESC, v.name COLLATE NOCASE', [$uid]);
+}
+
+// A voice's instructions with a monitor's own note after them.
+function voice_prompt(string $base, string $note): string
+{
+    $base = trim($base) ?: default_summary_prompt();
+    $note = trim($note);
+    return $note === '' ? $base : "$base\n\nFor this monitor, also: $note";
+}
+
+// What a monitor's summaries are written with: its voice (or instructions of its own) and its note, and whether
+// they're in Markdown.
+function monitor_voice(array $m): array
+{
+    $v = !empty($m['voice_id']) ? row('SELECT * FROM voice WHERE id = ?', [$m['voice_id']]) : null;
+    $base = $v ? $v['prompt'] : (string)($m['summary_prompt'] ?? '');
+    return ['voice' => $v ?: null, 'base' => $base, 'prompt' => voice_prompt($base, (string)($m['voice_note'] ?? '')),
+        'markdown' => (bool)($v ? $v['markdown'] : ($m['summary_markdown'] ?? 1))];
+}
+
+// Reads a monitor's Summary form: one of the account's voices, or "own" with instructions just for this monitor,
+// and its note. Returns [an error or null, the monitor's columns to save, the instructions it would write with, Markdown].
+function voice_choice(array $m, array $in): array
+{
+    $note = trim((string)($in['voice_note'] ?? ''));
+    if (mb_strlen($note) > 1000) return ['The note for this monitor can be up to 1000 characters.', [], '', true];
+    $own = ($in['voice'] ?? '') === 'own';
+    if ($own) {
+        $base = trim((string)($in['summary_prompt'] ?? ''));
+        if ($base === '' || mb_strlen($base) > 4000) return ['Write how summaries should be written, up to 4000 characters.', [], '', true];
+        $md = !empty($in['summary_markdown']);
+        $cols = ['voice_id' => null, 'summary_prompt' => $base, 'summary_markdown' => $md ? 1 : 0, 'voice_note' => $note];
+    } else {
+        $v = own_voice((int)$m['user_id'], (int)($in['voice'] ?? 0));
+        if (!$v) return ['Choose a voice for this monitor.', [], '', true];
+        [$base, $md] = [$v['prompt'], (bool)$v['markdown']];
+        $cols = ['voice_id' => (int)$v['id'], 'voice_note' => $note];
+    }
+    $prompt = voice_prompt($base, $note);
+    // A shared voice was screened when it was saved. A note, or instructions just for this monitor, are screened
+    // here, together with what they add to.
+    if (($own || $note !== '') && ($why = screen_summary_prompt($prompt, (int)$m['id']))) return [$why, [], $prompt, $md];
+    return [null, $cols, $prompt, $md];
+}
+
+function save_monitor_voice(array $m, array $cols): void
+{
+    // The column names come from voice_choice(), never from the form.
+    q('UPDATE monitor SET ' . implode(', ', array_map(fn($k) => "$k = ?", array_keys($cols))) . ' WHERE id = ?', [...array_values($cols), $m['id']]);
+}
+
+// Creates one of the account's voices, or updates $voice, from the Voices form. Returns [an error or null, its id].
+function save_voice(int $uid, ?array $voice, array $in): array
+{
+    $name = trim((string)($in['name'] ?? ''));
+    $prompt = trim((string)($in['prompt'] ?? ''));
+    if ($name === '' || mb_strlen($name) > 60) return ['Give the voice a name, up to 60 characters.', null];
+    if ($prompt === '' || mb_strlen($prompt) > 4000) return ['Write how this voice writes, up to 4000 characters.', null];
+    if ($why = screen_summary_prompt($prompt, null)) return [$why, null];
+    $md = empty($in['markdown']) ? 0 : 1;
+    if ($voice) {
+        q("UPDATE voice SET name = ?, prompt = ?, markdown = ?, updated_at = datetime('now') WHERE id = ?", [$name, $prompt, $md, $voice['id']]);
+        return [null, (int)$voice['id']];
+    }
+    default_voice($uid);   // an account's first voice of its own doesn't take over as the default
+    if ((int)val('SELECT count(*) FROM voice WHERE user_id = ?', [$uid]) >= 30) return ['Each account can have up to 30 voices.', null];
+    q('INSERT INTO voice (user_id, name, prompt, markdown) VALUES (?, ?, ?, ?)', [$uid, $name, $prompt, $md]);
+    return [null, (int)db()->lastInsertId()];
+}
+
+// Removes a voice. Its monitors move to the default voice, which can't itself be removed.
+function delete_voice(int $uid, array $v): ?string
+{
+    if ($v['is_default']) return "The default voice can't be removed. Make another voice the default first.";
+    q('UPDATE monitor SET voice_id = ? WHERE voice_id = ?', [default_voice($uid)['id'], $v['id']]);
+    q('DELETE FROM voice WHERE id = ?', [$v['id']]);
+    return null;
+}
+
+function make_default_voice(int $uid, array $v): void
+{
+    q('UPDATE voice SET is_default = (id = ?) WHERE user_id = ?', [$v['id'], $uid]);
+}
+
+// How a monitor's newest agenda reads with these instructions, without saving anything. The newest agenda any
+// agent on its site has read is the same public document, so that's the one used.
+function preview_summary(array $m, string $prompt, bool $markdown): array
+{
+    $latest = row('SELECT g.title, g.text, g.found_at FROM agenda g JOIN monitor mo ON mo.id = g.monitor_id
+        WHERE mo.site_id = ? AND length(g.text) > 100 ORDER BY coalesce(g.meeting_date, g.found_at) DESC LIMIT 1', [$m['site_id']]);
+    if (!$latest) return ['title' => '', 'text' => '', 'error' => 'There is no agenda to preview on yet. Once the first one is in, the preview shows how it would be summarized.'];
+    try {
+        return ['title' => $latest['title'], 'text' => summarize($prompt, $latest['title'], $latest['text'], (int)$m['id'], $latest['found_at'], $markdown)];
+    } catch (Throwable) {
+        return ['title' => $latest['title'], 'text' => '', 'error' => "The preview couldn't be written just now. Try again in a minute."];
+    }
+}
+
+// Queues the newest agenda of every monitor using a voice to be rewritten in it. Returns how many were queued.
+function queue_voice_rebuilds(array $v): int
+{
+    $n = 0;
+    foreach (rows('SELECT id FROM monitor WHERE voice_id = ?', [$v['id']]) as $m) {
+        $a = val('SELECT id FROM agenda WHERE monitor_id = ? AND length(text) > 100 ORDER BY coalesce(meeting_date, found_at) DESC LIMIT 1', [$m['id']]);
+        if (!$a) continue;
+        q("INSERT INTO summary_job (monitor_id, kind, item_id) VALUES (?, 'agenda', ?)", [$m['id'], $a]);
+        $n++;
+    }
+    return $n;
+}
+
+// Rewrites a few queued summaries; the housekeeping tick calls it every minute. Each takes the AI model a while.
+function run_summary_jobs(int $limit = 3): int
+{
+    $done = 0;
+    foreach (rows('SELECT * FROM summary_job ORDER BY id LIMIT ?', [$limit]) as $j) {
+        q('DELETE FROM summary_job WHERE id = ?', [$j['id']]);
+        $m = row('SELECT * FROM monitor WHERE id = ?', [$j['monitor_id']]);
+        try {
+            if ($m && rebuild_summary($m, $j['kind'], (int)$j['item_id']) !== null) $done++;
+        } catch (Throwable) {
+            // A summary the model couldn't write stays as it was.
+        }
+    }
+    return $done;
 }

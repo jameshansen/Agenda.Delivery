@@ -3,34 +3,55 @@ $title = $m['name'];
 $panel = 'monitors';
 $state = $agent['actual_state'] ?? 'pending';
 $typeName = fn($k) => $types[$k]['name'] ?? $k;
-$draft = $draft ?? $m['summary_prompt'];
-// The Markdown box as last sent, so a preview or a refused save keeps it as it was ticked.
-$mdDraft = isset($_POST['summary_prompt']) ? !empty($_POST['summary_markdown']) : (bool)($m['summary_markdown'] ?? 1);
+// The Summary form as last sent, so a preview or a refused save keeps what was chosen and typed.
+$voices = $voices ?? [];
+$mv = monitor_voice($m);
+$voiceSel = (string)($_POST['voice'] ?? ($m['voice_id'] ?: 'own'));
+$noteDraft = (string)($_POST['voice_note'] ?? $m['voice_note'] ?? '');
+// A voice of its own starts from the voice it had, so switching to one is a tweak rather than a blank page.
+$draft = (string)($_POST['summary_prompt'] ?? $mv['base']);
+$mdDraft = isset($_POST['voice']) ? !empty($_POST['summary_markdown']) : $mv['markdown'];
 $preview = $preview ?? null;
 $runActive = $run && in_array($run['state'], ['queued', 'running'], true);
 // The monitor's address without its leading /m/, e.g. 3/township-of-langley, which the forms below post under.
 $slug = h(substr(monitor_url($m), 3));
 
-// The summary designer: templates to start from, the prompt, and a preview on a real agenda.
-$designer = function (bool $starting) use ($draft, $mdDraft, $preview, $slug) {
+// The Summary form: the voice this monitor writes in (or one of its own), a note for this monitor, and a preview.
+$designer = function (bool $starting) use ($voices, $voiceSel, $noteDraft, $draft, $mdDraft, $preview, $slug) {
     ob_start(); ?>
     <div class="vstack g-3">
-      <div><span class="label"><?= icon('wand-magic-sparkles') ?> Start from a template</span>
+      <div><label class="label" for="voice"><?= icon('head-side-cough') ?> Voice</label>
         <div class="hstack" style="flex-wrap:wrap">
-          <?php foreach (summary_templates() as $key => $t): ?>
-            <button type="button" class="btn btn-sm" data-template="<?= h($t['prompt']) ?>"><?= h($t['name']) ?></button>
-          <?php endforeach ?>
-        </div></div>
-      <div><label class="label" for="summary_prompt"><?= icon('pen-nib') ?> How summaries are written</label>
-        <textarea class="input" id="summary_prompt" name="summary_prompt" rows="6" maxlength="4000" required><?= h($draft) ?></textarea>
-        <p class="form-text mb-0">Write it like instructions to a helper: who's writing, the voice, how long, what to focus on and how to sign off. Summaries only ever use facts from the meeting material.</p></div>
-      <div><label class="option"><input type="checkbox" name="summary_markdown" value="1" <?= $mdDraft ? 'checked' : '' ?>> <?= icon('heading') ?> Format with Markdown</label>
-        <p class="form-text mb-0">Bold, lists and headings, shown formatted here and in email. Discord and webhooks get the Markdown itself, WhatsApp its own bold and italics, and Pushover plain text.</p></div>
+          <select class="input" id="voice" name="voice" data-switch="voice" data-voice-select style="flex:1;min-width:16rem">
+            <?php foreach ($voices as $v): ?>
+              <option value="<?= (int)$v['id'] ?>" <?= $voiceSel === (string)$v['id'] ? 'selected' : '' ?>><?= h($v['name']) ?><?= $v['is_default'] ? ' (default)' : '' ?> · <?= (int)$v['uses'] ?> <?= (int)$v['uses'] === 1 ? 'monitor' : 'monitors' ?></option>
+            <?php endforeach ?>
+            <option value="own" <?= $voiceSel === 'own' ? 'selected' : '' ?>>A voice just for this monitor</option>
+          </select>
+          <a class="btn" href="/voices/<?= h($voiceSel) ?>" data-voice-link <?= $voiceSel === 'own' ? 'hidden' : '' ?>><?= icon('head-side-cough') ?> Edit voice</a>
+        </div>
+        <p class="form-text mb-0">Voices are kept under <a href="/voices">Voices</a>, where editing one changes every monitor that uses it.</p></div>
+      <div class="vstack g-3" data-when="voice=own" <?= $voiceSel === 'own' ? '' : 'hidden' ?>>
+        <div><span class="label"><?= icon('wand-magic-sparkles') ?> Start from a template</span>
+          <div class="hstack" style="flex-wrap:wrap">
+            <?php foreach (summary_templates() as $t): ?>
+              <button type="button" class="btn btn-sm" data-template="<?= h($t['prompt']) ?>"><?= h($t['name']) ?></button>
+            <?php endforeach ?>
+          </div></div>
+        <div><label class="label" for="summary_prompt"><?= icon('pen-nib') ?> How this monitor's summaries are written</label>
+          <textarea class="input" id="summary_prompt" name="summary_prompt" rows="6" maxlength="4000" data-template-box><?= h($draft) ?></textarea>
+          <p class="form-text mb-0">Write it like instructions to a helper: who's writing, the tone, how long, what to focus on and how to sign off. Summaries only ever use facts from the meeting material.</p></div>
+        <div><label class="option"><input type="checkbox" name="summary_markdown" value="1" <?= $mdDraft ? 'checked' : '' ?>> <?= icon('heading') ?> Format with Markdown</label>
+          <p class="form-text mb-0">Bold, lists and headings, shown formatted here and in email. Discord and webhooks get the Markdown itself, WhatsApp its own bold and italics, and Pushover plain text.</p></div>
+      </div>
+      <div><label class="label" for="voice_note"><?= icon('location-dot') ?> For this monitor, also</label>
+        <textarea class="input" id="voice_note" name="voice_note" rows="2" maxlength="1000" placeholder="Call it the City, not Testville. Councillor Smyth is spelled with a y."><?= h($noteDraft) ?></textarea>
+        <p class="form-text mb-0">Added to the voice for this monitor only, for local details like names and spellings. Leave it empty if the voice covers everything.</p></div>
       <?php if ($preview && !empty($preview['refused'])): ?>
         <div class="node is-error" style="display:block">
           <div class="node-title"><?= icon('ban') ?>Not saved</div>
           <p class="mb-0 mt-1"><?= h($preview['error']) ?></p>
-          <p class="small mb-0 mt-2">Think these instructions should be allowed? <a href="/report?about=prompt">Report a problem</a>.</p>
+          <p class="small mb-0 mt-2">Think this should be allowed? <a href="/report?about=prompt">Report a problem</a>.</p>
         </div>
       <?php elseif ($preview): ?>
         <div class="node" style="--c:var(--o-blue);display:block">
@@ -45,9 +66,9 @@ $designer = function (bool $starting) use ($draft, $mdDraft, $preview, $slug) {
       <div class="hstack" style="flex-wrap:wrap">
         <button class="btn" formaction="/m/<?= $slug ?>/preview" formnovalidate data-busy="Writing a preview, this takes a few seconds"><?= icon('eye') ?> Preview on the latest agenda</button>
         <?php if ($starting): ?>
-          <button class="btn btn-primary" formaction="/m/<?= $slug ?>/start" data-busy="Checking the instructions and starting"><?= icon('play') ?> Start monitoring</button>
+          <button class="btn btn-primary" formaction="/m/<?= $slug ?>/start" data-busy="Starting"><?= icon('play') ?> Start monitoring</button>
         <?php else: ?>
-          <button class="btn btn-primary" formaction="/m/<?= $slug ?>/summary" data-busy="Checking the instructions"><?= icon('check') ?> Save</button>
+          <button class="btn btn-primary" formaction="/m/<?= $slug ?>/summary" data-busy="Saving"><?= icon('check') ?> Save</button>
         <?php endif ?>
       </div>
     </div>
@@ -67,15 +88,15 @@ $summaryBlock = function (string $kind, array $item) use ($versionsOf) {
         <?php if ($i): ?><p class="summary-older"><?= icon('clock-rotate-left') ?> An earlier revision, from <?= h(ago($s['created_at'])) ?>. The latest is the one that's sent.</p><?php endif ?>
         <div class="summary md"><?= text_to_html($s['text'], null) ?></div>
         <div class="summary-prompt">
-          <div class="label"><?= icon('pen-nib') ?> Instructions used</div>
-          <div class="summary"><?= $s['prompt'] !== null ? h($s['prompt']) : 'Written before instructions were kept.' ?></div>
+          <div class="label"><?= icon('head-side-cough') ?> Voice used</div>
+          <div class="summary"><?= $s['prompt'] !== null ? h($s['prompt']) : 'Written before voices were kept.' ?></div>
         </div>
       </div>
     <?php endforeach ?>
     <?php return ob_get_clean();
 };
 // Under the summary: its versions, the instructions behind the one showing, Rebuild and a way to the instructions.
-$summaryBar = function (string $kind, array $item) use ($versionsOf, $slug) {
+$summaryBar = function (string $kind, array $item) use ($versionsOf, $slug, $m) {
     $versions = $versionsOf($kind, $item);
     ob_start(); ?>
     <div class="summary-bar">
@@ -88,13 +109,17 @@ $summaryBar = function (string $kind, array $item) use ($versionsOf, $slug) {
       <?php endif ?>
       <div class="summary-actions">
         <?php if ($versions): ?>
-          <button type="button" class="btn btn-sm btn-ghost" data-toggle-prompt aria-pressed="false"><?= icon('eye') ?> Instructions used</button>
+          <button type="button" class="btn btn-sm btn-ghost" data-toggle-prompt aria-pressed="false"><?= icon('eye') ?> Voice used</button>
         <?php endif ?>
         <form method="post" action="/m/<?= $slug ?>/rebuild/<?= (int)$item['id'] ?>/<?= $kind ?>">
           <?= csrf_field() ?>
-          <button class="btn btn-sm" title="Write a new revision with the current instructions" data-busy="Rebuilding"><?= icon('rotate') ?> Rebuild</button>
+          <button class="btn btn-sm" title="Write a new revision in the current voice" data-busy="Rebuilding"><?= icon('rotate') ?> Rebuild</button>
         </form>
-        <button type="button" class="btn btn-sm" data-goto-tab="#t-summary"><?= icon('pen-nib') ?> Edit instructions</button>
+        <?php if ($m['voice_id']): ?>
+          <a class="btn btn-sm" href="/voices/<?= (int)$m['voice_id'] ?>"><?= icon('head-side-cough') ?> Edit voice</a>
+        <?php else: ?>
+          <button type="button" class="btn btn-sm" data-goto-tab="#t-summary"><?= icon('head-side-cough') ?> Edit voice</button>
+        <?php endif ?>
       </div>
     </div>
     <?php return ob_get_clean();
@@ -168,7 +193,7 @@ $typeBoxes = function (array $checked) use ($types) {
     <h3><span class="chip"><?= icon('list-check') ?></span>Choose what to follow</h3>
     <p class="small text-muted">The agent found these kinds of meetings on <?= h($m['site_name']) ?>'s site. It only reads and summarizes the ones you tick. The usual council meetings are ticked to start.</p>
     <?= $typeBoxes(isset($_POST['types']) ? (array)$_POST['types'] : array_keys(array_filter($types, fn($t) => $t['default']))) ?>
-    <h3 class="mt-4"><span class="chip" style="--c:var(--o-blue)"><?= icon('pen-nib') ?></span>Design your summaries</h3>
+    <h3 class="mt-4"><span class="chip" style="--c:var(--o-blue)"><?= icon('head-side-cough') ?></span>Choose a voice</h3>
     <?= $designer(true) ?>
   </form>
 
@@ -273,8 +298,8 @@ $typeBoxes = function (array $checked) use ($types) {
   <div class="tab-pane" id="t-summary">
     <form method="post" class="node-add mt-0">
       <?= csrf_field() ?>
-      <h3><span class="chip" style="--c:var(--o-blue)"><?= icon('pen-nib') ?></span>Summary designer</h3>
-      <p class="small text-muted">Each agenda and video this monitor saves is summarized with these instructions. New ones are written this way, and any agenda or video can be rebuilt with them under Agendas or Videos, which keeps its earlier summaries.</p>
+      <h3><span class="chip" style="--c:var(--o-blue)"><?= icon('head-side-cough') ?></span>Summary</h3>
+      <p class="small text-muted">Each agenda and video this monitor saves is summarized in this voice. Any agenda or video can be rebuilt in it under Agendas or Videos, which keeps its earlier revisions.</p>
       <?= $designer(false) ?>
     </form>
   </div>
@@ -303,11 +328,6 @@ $typeBoxes = function (array $checked) use ($types) {
 <?php endif ?>
 
 <script>
-// Template buttons fill in the summary instructions; the preview and save buttons send them.
-document.querySelectorAll('[data-template]').forEach(b => b.addEventListener('click', () => {
-  const box = document.getElementById('summary_prompt');
-  if (box) { box.value = b.dataset.template; box.focus(); }
-}));
 <?php if ($preview && $m['state'] === 'ready'): ?>
 addEventListener('DOMContentLoaded', () => document.querySelector('[data-tab="#t-summary"]')?.click());
 <?php endif ?>

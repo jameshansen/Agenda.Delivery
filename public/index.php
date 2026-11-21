@@ -258,6 +258,7 @@ if (preg_match('#^/m/(\d+)(?:/([a-z0-9-]*))?(?:/(\w+))?(?:/(\d+))?(?:/(\w+))?$#'
             'videos' => rows('SELECT id, url, title, meeting_date, meeting_type, summary, length(transcript) AS tlen FROM video WHERE monitor_id = ? ORDER BY coalesce(meeting_date, found_at) DESC LIMIT 20', [$mid]),
             'pending' => rows('SELECT * FROM pending_item WHERE monitor_id = ? AND open = 1 ORDER BY updated_at DESC', [$mid]),
             'history' => summary_history($mid),
+            'voices' => user_voices($uid),
             'rules' => rows('SELECT r.*, t.name AS target_name, t.kind AS target_kind, t.paused, t.confirmed FROM rule r JOIN target t ON t.id = r.target_id WHERE r.user_id = ? AND r.monitor_id = ? ORDER BY r.id', [$uid, $mid]),
             'targets' => user_targets($uid),
         ]);
@@ -305,7 +306,7 @@ if (preg_match('#^/m/(\d+)(?:/([a-z0-9-]*))?(?:/(\w+))?(?:/(\d+))?(?:/(\w+))?$#'
             if (too_many("preview:$uid", 30, 3600)) { flash("That's a lot of summaries in an hour. Wait a little and try again.", 'danger'); redirect("$back#$tab"); }
             try {
                 $ok = rebuild_summary($m, $kind, (int)$mm[3]) !== null;
-                flash($ok ? 'Rebuilt with the current instructions. The earlier revisions are a click away under it.' : 'There is no text on file to summarize for that one.', $ok ? 'success' : 'danger');
+                flash($ok ? 'Rebuilt in the current voice. The earlier revisions are a click away under it.' : 'There is no text on file to summarize for that one.', $ok ? 'success' : 'danger');
             } catch (Throwable $e) {
                 flash("The summary couldn't be written just now. Try again in a minute.", 'danger');
             }
@@ -318,20 +319,17 @@ if (preg_match('#^/m/(\d+)(?:/([a-z0-9-]*))?(?:/(\w+))?(?:/(\d+))?(?:/(\w+))?$#'
             redirect("$back#t-types");
         case 'summary':
         case 'preview':
-            $prompt = trim((string)($_POST['summary_prompt'] ?? ''));
-            if ($prompt === '' || mb_strlen($prompt) > 4000) { flash('Write how summaries should be written, up to 4000 characters.', 'danger'); redirect("$back#t-summary"); }
             if (too_many("preview:$uid", 30, 3600)) {
-                $view(['draft' => $prompt, 'preview' => ['title' => '', 'text' => '', 'refused' => true,
-                    'error' => "That's a lot of tries in an hour. Wait a little and try again."]]);
+                $view(['preview' => ['title' => '', 'text' => '', 'refused' => true, 'error' => "That's a lot of tries in an hour. Wait a little and try again."]]);
             }
-            if ($refused = screen_summary_prompt($prompt, $mid)) {
-                $view(['draft' => $prompt, 'preview' => ['title' => '', 'text' => '', 'error' => $refused, 'refused' => true]]);
-            }
+            [$refused, $cols, $prompt, $markdown] = voice_choice($m, $_POST);
+            if ($refused) $view(['preview' => ['title' => '', 'text' => '', 'error' => $refused, 'refused' => true]]);
             if ($action === 'summary') {
-                q('UPDATE monitor SET summary_prompt = ?, summary_markdown = ? WHERE id = ?', [$prompt, empty($_POST['summary_markdown']) ? 0 : 1, $mid]);
-                flash('Saved. New agendas and videos are summarized this way.');
+                save_monitor_voice($m, $cols);
+                flash('Saved. New agendas and videos are summarized in this voice.');
                 redirect("$back#t-summary");
             }
+            $view(['preview' => preview_summary($m, $prompt, $markdown)]);
             // The preview uses the newest agenda any agent on this site has read; it's the same public document.
             $latest = row('SELECT g.title, g.text, g.found_at FROM agenda g JOIN monitor mo ON mo.id = g.monitor_id
                 WHERE mo.site_id = ? AND length(g.text) > 100 ORDER BY coalesce(g.meeting_date, g.found_at) DESC LIMIT 1', [$m['site_id']]);
@@ -523,6 +521,55 @@ if (preg_match('#^/notifications/rule/(\d+)/delete$#', $path, $mm) && $post) {
     q('DELETE FROM rule WHERE id = ? AND user_id = ?', [(int)$mm[1], $uid]);
     flash('Notification removed.');
     redirect('/notifications/sent');
+}
+
+// ---- voices: how summaries are written, shared across an account's monitors -------------------------------
+// /voices lists them, /voices/new and /voices/<id> show the editor, and its buttons post to .../save, .../rebuild
+// (save, then rewrite the newest agenda of each monitor using it), .../preview, .../default and .../delete.
+if (preg_match('#^/voices(?:/(new|\d+))?(?:/(\w+))?$#', $path, $mm)) {
+    require_once __DIR__ . '/../src/notify.php';   // text_to_html(), for the preview
+    $which = $mm[1] ?? '';
+    $voice = ctype_digit($which) ? own_voice($uid, (int)$which) : null;
+    if (ctype_digit($which) && !$voice) { http_response_code(404); render('not_found'); exit; }
+    $show = function (array $extra = []) use ($uid, $voice, $which) {
+        render('voices', $extra + ['voices' => user_voices($uid), 'voice' => $voice, 'editing' => $which !== '', 'monitors' => user_monitors($uid),
+            'users' => $voice ? rows('SELECT num, name FROM monitor WHERE voice_id = ? ORDER BY name COLLATE NOCASE', [$voice['id']]) : []]);
+        exit;
+    };
+    if (!$post) $show();
+    $action = $mm[2] ?? '';
+    $back = $voice ? "/voices/{$voice['id']}" : '/voices/new';
+    if ($voice && $action === 'default') {
+        make_default_voice($uid, $voice);
+        flash("{$voice['name']} is now the default voice. New monitors get it.");
+        redirect('/voices');
+    }
+    if ($voice && $action === 'delete') {
+        if ($err = delete_voice($uid, $voice)) { flash($err, 'danger'); redirect('/voices'); }
+        flash("{$voice['name']} is removed. Its monitors now use the default voice.");
+        redirect('/voices');
+    }
+    if ($action === 'preview') {
+        $pm = row('SELECT * FROM monitor WHERE id = ? AND user_id = ?', [(int)($_POST['preview_on'] ?? 0), $uid]);
+        $prompt = trim((string)($_POST['prompt'] ?? ''));
+        $preview = match (true) {
+            !$pm => ['title' => '', 'text' => '', 'error' => 'Add a monitor first. The preview uses its newest agenda.'],
+            $prompt === '' => ['title' => '', 'text' => '', 'error' => 'Write how this voice writes first.'],
+            too_many("preview:$uid", 30, 3600) => ['title' => '', 'text' => '', 'refused' => true, 'error' => "That's a lot of tries in an hour. Wait a little and try again."],
+            default => null,
+        };
+        if (!$preview && ($why = screen_summary_prompt($prompt, null))) $preview = ['title' => '', 'text' => '', 'error' => $why, 'refused' => true];
+        $show(['preview' => $preview ?? preview_summary($pm, $prompt, !empty($_POST['markdown']))]);
+    }
+    if ($action === 'save' || $action === 'rebuild') {
+        [$err, $id] = save_voice($uid, $voice, $_POST);
+        if ($err) $show(['preview' => ['title' => '', 'text' => '', 'error' => $err, 'refused' => true]]);
+        $n = $action === 'rebuild' ? queue_voice_rebuilds(own_voice($uid, $id)) : 0;
+        flash(match (true) { $n === 0 => 'Saved.', $n === 1 => "Saved. Its monitor's newest summary is being rewritten and shows up within a few minutes.",
+            default => "Saved. The newest summary of each of its $n monitors is being rewritten, a few each minute." });
+        redirect("/voices/$id");
+    }
+    redirect($back);
 }
 
 if ($path === '/settings') {

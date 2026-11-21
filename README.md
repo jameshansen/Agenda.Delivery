@@ -23,7 +23,8 @@ It's a small project running on a single $20/month server and a $20/month Ollama
 <p align="center"><img src="docs/screenshots/dashboard.png" width="800" alt="The monitors page, with the form to add a monitor"></p>
 
 - **Meeting types.** While setting up, the agent works out which kinds of meetings the organization holds (regular council, public hearings, committees and so on), and you choose which ones to follow.
-- **Summaries your way.** The summary designer starts from a template (plain language, Strong Towns topics, cycling and active transportation, decisions only, housing and land use, or a short alert) that you can change however you like, and previews it on the latest agenda. When an item comes back to council, the summary says where it stood.
+- **Voices.** A voice is how summaries are written: who's writing, the tone, what to cover and how long. Start one from a template (a short news summary with highlights, Strong Towns topics, cycling and active transportation, decisions only, housing and land use, or a short alert), change it however you like, and preview it on a monitor's latest agenda. Any number of monitors can share a voice, so one edit changes them all, and each monitor can add a note of its own, such as local names and spellings. New monitors get your default voice. Summaries can be written in Markdown, shown formatted on the site and in email. When an item comes back to council, the summary says where it stood.
+- **Revisions.** Rebuild any agenda or video's summary in its current voice, and the earlier revisions stay a click away, each with the voice it was written in. Saving a voice can rebuild the newest summary of every monitor that uses it.
 
 <p align="center"><img src="docs/screenshots/summary-designer.png" width="800" alt="The summary designer, with its templates and instructions"></p>
 

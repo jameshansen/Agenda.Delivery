@@ -96,6 +96,19 @@ CREATE TABLE IF NOT EXISTS site (
 
 -- One monitor = one account watching one site = one agent. The account chooses which meeting types it
 -- tracks and writes the prompt its summaries are made with.
+-- A voice: named instructions for how summaries are written, which any of the account's monitors can use.
+-- Every account has one default, which new monitors get.
+CREATE TABLE IF NOT EXISTS voice (
+  id          INTEGER PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  prompt      TEXT NOT NULL,
+  markdown    INTEGER NOT NULL DEFAULT 1,
+  is_default  INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS monitor (
   id             INTEGER PRIMARY KEY,
   slug           TEXT NOT NULL UNIQUE,               -- the agent's internal key, "m-<id>": its folder, gateway and log
@@ -111,6 +124,8 @@ CREATE TABLE IF NOT EXISTS monitor (
   meeting_types  TEXT NOT NULL DEFAULT '[]',         -- JSON list of the site's meeting type keys this account tracks
   summary_prompt TEXT NOT NULL DEFAULT '',           -- how this account's summaries are written
   summary_markdown INTEGER NOT NULL DEFAULT 1,       -- summaries are written in Markdown rather than plain text
+  voice_id       INTEGER REFERENCES voice(id) ON DELETE SET NULL,  -- the voice it writes in; NULL uses summary_prompt above
+  voice_note     TEXT NOT NULL DEFAULT '',          -- added to the voice for this monitor only
   -- Set when the first check finishes with the site working. Until then the agent is catching up on meetings
   -- already posted, which are saved but not sent: notifications are for what appears after the monitor is added.
   notify_from    TEXT,
@@ -183,6 +198,16 @@ CREATE TABLE IF NOT EXISTS video (
 
 -- Every summary written for an agenda or video, newest last, with the instructions it was written from.
 -- The agenda or video's own summary column is the newest of these.
+-- Summaries waiting to be rewritten, such as the newest agenda of every monitor using a voice that was just
+-- changed. The housekeeping tick works through a few each minute.
+CREATE TABLE IF NOT EXISTS summary_job (
+  id          INTEGER PRIMARY KEY,
+  monitor_id  INTEGER NOT NULL REFERENCES monitor(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,                  -- agenda | video
+  item_id     INTEGER NOT NULL,
+  queued_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS summary (
   id          INTEGER PRIMARY KEY,
   monitor_id  INTEGER NOT NULL REFERENCES monitor(id) ON DELETE CASCADE,

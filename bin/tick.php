@@ -10,6 +10,8 @@ foreach (rows('SELECT a.home, m.id AS mid FROM agent a JOIN monitor m ON m.id = 
     import_ledger((int)$a['mid'], $a['home']);
 }
 $sent = drain_events() + send_digests();
+require_once __DIR__ . '/../src/summary.php';
+run_summary_jobs();
 if ($sent) echo "sent $sent notifications\n";
 sweep_media();
 whatsapp_alerts();

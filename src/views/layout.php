@@ -43,7 +43,7 @@ try { localStorage.removeItem('opaliteTheme'); } catch (e) {}
       <section class="card panel" data-section="<?= h($panel) ?>">
         <div class="panel-head">
           <nav class="nav nav-tabs" aria-label="Sections">
-            <?php foreach (['monitors' => ['Monitors', '/', 'magnifying-glass'], 'notifications' => ['Notifications', '/notifications', 'bell'], 'settings' => ['Settings', '/settings', 'gear']] as $key => [$label, $href, $ico]): ?>
+            <?php foreach (['monitors' => ['Monitors', '/', 'magnifying-glass'], 'notifications' => ['Notifications', '/notifications', 'bell'], 'voices' => ['Voices', '/voices', 'head-side-cough'], 'settings' => ['Settings', '/settings', 'gear']] as $key => [$label, $href, $ico]): ?>
               <a class="nav-link <?= $panel === $key ? 'active' : '' ?>" href="<?= $href ?>" <?= $panel === $key ? 'aria-current="page"' : '' ?>><?= icon($ico) ?> <?= $label ?></a>
             <?php endforeach ?>
           </nav>
@@ -61,6 +61,7 @@ try { localStorage.removeItem('opaliteTheme'); } catch (e) {}
       <?php if (member_session($me)): ?>
         <a href="/"><?= icon('magnifying-glass') ?> Monitors</a>
         <a href="/notifications"><?= icon('bell') ?> Notifications</a>
+        <a href="/voices"><?= icon('head-side-cough') ?> Voices</a>
         <a href="/settings"><?= icon('gear') ?> Settings</a>
       <?php elseif (!$me): ?>
         <a href="/login"><?= icon('right-to-bracket') ?> Sign in</a>
@@ -139,6 +140,13 @@ document.addEventListener('click', async e => {
   go.disabled = false;
 });
 
+// A template button fills in the box of instructions in its own form, marked data-template-box.
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-template]');
+  const box = t?.form?.querySelector('[data-template-box]');
+  if (box) { box.value = t.dataset.template; box.focus(); }
+});
+
 // A select marked data-switch="name" shows the parts of its form marked data-when="name=value" (or several values,
 // spaced) for the value chosen and hides the others: the keywords box for keyword notifications, the weekday for a
 // weekly digest, a list's own name and logo when it sends under them.
@@ -148,6 +156,10 @@ document.addEventListener('change', e => {
     const [key, values] = el.dataset.when.split('=');
     if (key === s.dataset.switch) el.hidden = !values.split(' ').includes(s.value);
   });
+  // A monitor's voice choice points its Edit voice link at the voice picked, and hides it for a voice of its own.
+  const v = e.target.closest('select[data-voice-select]');
+  const link = v?.form?.querySelector('[data-voice-link]');
+  if (link) { link.hidden = v.value === 'own'; link.href = '/voices/' + v.value; }
   // A file field marked data-max-kb turns away a file that's too big before it's sent.
   const f = e.target.closest('input[type=file][data-max-kb]');
   if (f && f.files[0] && f.files[0].size > f.dataset.maxKb * 1024) {

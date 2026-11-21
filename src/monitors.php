@@ -58,9 +58,9 @@ function create_monitor(int $uid, array $in): array
     // The account's next number, never reused, so an old address can't come to mean another monitor.
     q('UPDATE user SET monitor_seq = monitor_seq + 1 WHERE id = ?', [$uid]);
     $num = (int)val('SELECT monitor_seq FROM user WHERE id = ?', [$uid]);
-    q('INSERT INTO monitor (slug, num, user_id, site_id, name, kind, visibility, video_url, video_source, state, summary_prompt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+    q('INSERT INTO monitor (slug, num, user_id, site_id, name, kind, visibility, video_url, video_source, state, summary_prompt, voice_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
         'new-' . bin2hex(random_bytes(6)), $num, $uid, $site['id'], $name, $kind, 'public', $videoUrl, ($in['video_source'] ?? '') === 'youtube' ? 'youtube' : 'page',
-        $state, default_summary_prompt(),
+        $state, default_summary_prompt(), default_voice($uid)['id'],
     ]);
     $id = (int)db()->lastInsertId();
     // The agent's key is the monitor's own id, so nothing a person typed reaches its folder, gateway or logs.
@@ -116,11 +116,10 @@ function save_choices(array $m, array $in): ?string
     $types = site_meeting_types($m['site_types']);
     $picked = array_values(array_intersect(array_keys($types), (array)($in['types'] ?? [])));
     if (!$picked) return 'Pick at least one kind of meeting to follow.';
-    $prompt = trim((string)($in['summary_prompt'] ?? ''));
-    if ($prompt === '' || mb_strlen($prompt) > 4000) return 'Write how summaries should be written, up to 4000 characters.';
-    if ($refused = screen_summary_prompt($prompt, (int)$m['id'])) return $refused;
-    q("UPDATE monitor SET meeting_types = ?, summary_prompt = ?, summary_markdown = ?, state = 'ready' WHERE id = ?",
-        [json_encode($picked), $prompt, empty($in['summary_markdown']) ? 0 : 1, $m['id']]);
+    [$refused, $cols] = voice_choice($m, $in);
+    if ($refused) return $refused;
+    save_monitor_voice($m, $cols);
+    q("UPDATE monitor SET meeting_types = ?, state = 'ready' WHERE id = ?", [json_encode($picked), $m['id']]);
     if ($m['state'] !== 'ready') {
         q('UPDATE agent SET run_requested = 1 WHERE monitor_id = ?', [$m['id']]);
         nudge_service($m['slug']);

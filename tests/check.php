@@ -74,8 +74,8 @@ q("UPDATE monitor SET state = 'choose' WHERE site_id = ? AND state = 'setup'", [
 ok($m3['state'] === 'choose', 'a later account on a set-up site goes straight to choosing');
 $own = own_monitor(1, 1);
 ok(save_choices($own, ['types' => [], 'summary_prompt' => 'x']) !== null, 'choices need at least one meeting type');
-ok(save_choices($own, ['types' => ['hearing'], 'summary_prompt' => 'Be brief.']) !== null, 'a custom prompt the guard cannot check is refused');
-ok(save_choices($own, ['types' => ['hearing', 'bogus'], 'summary_prompt' => default_summary_prompt()]) === null, 'choices saved');
+ok(save_choices($own, ['types' => ['hearing'], 'voice' => 'own', 'summary_prompt' => 'Be brief.']) !== null, 'a custom prompt the guard cannot check is refused');
+ok(save_choices($own, ['types' => ['hearing', 'bogus'], 'voice' => (string)$own['voice_id']]) === null, 'choices saved');
 $own = own_monitor(1, 1);
 ok($own['state'] === 'ready' && $own['meeting_types'] === '["hearing"]' && $own['summary_prompt'] === default_summary_prompt(), 'monitoring starts with the chosen types and prompt');
 ok(own_monitor(2, 1)['id'] === $m2['id'] && own_monitor(2, 2) === null, 'a monitor is found only in its own account');
@@ -376,6 +376,22 @@ ok(!str_contains(text_to_html('<script>x</script> [y](javascript:alert(1))', nul
 ok(wa_markdown("### Top\n**Bold** and *soft* [site](https://x.ca)") === "*Top*\n*Bold* and _soft_ site (https://x.ca)", 'WhatsApp gets its own bold, italics and links');
 ok(md_plain("### Top\n- **Bold** and *soft*") === "Top\n• Bold and soft", 'Pushover gets plain text');
 ok(str_contains(summary_format(true), 'Markdown') && str_contains(summary_format(false), 'plain text'), 'the summary writer is told which format to use');
+
+// Voices: every account has a default that new monitors get, monitors share voices, and a note stays with its monitor.
+[$vm] = create_monitor(1, ['name' => 'Voice Council', 'agenda_url' => 'https://8.8.8.8/voices/']);
+$def = default_voice(1);
+ok($def['name'] === 'News summary' && (int)$def['is_default'] === 1 && (int)$vm['voice_id'] === (int)$def['id'], 'a new monitor gets the account\'s default voice');
+[$e, $casey] = save_voice(1, null, ['name' => 'Casey', 'prompt' => summary_templates()['active']['prompt'], 'markdown' => '1']);
+[$e2, $cols] = voice_choice($vm, ['voice' => (string)$casey, 'voice_note' => '']);
+save_monitor_voice($vm, $cols);
+$mv = monitor_voice(row('SELECT * FROM monitor WHERE id = ?', [$vm['id']]));
+ok($e === null && $e2 === null && $mv['base'] === summary_templates()['active']['prompt'] && $mv['markdown'] && (int)default_voice(1)['id'] === (int)$def['id'],
+    'a monitor writes in the voice it is given, and a new voice does not take over as the default');
+ok(voice_choice($vm, ['voice' => '999999'])[0] !== null, "a monitor can only use the account's own voices");
+ok(voice_prompt('Base', 'Say Township') === "Base\n\nFor this monitor, also: Say Township" && voice_prompt('Base', ' ') === 'Base', 'a note is added to the voice for its monitor only');
+ok(delete_voice(1, $def) !== null, 'the default voice cannot be removed');
+delete_voice(1, own_voice(1, $casey));
+ok((int)val('SELECT voice_id FROM monitor WHERE id = ?', [$vm['id']]) === (int)$def['id'], 'removing a voice moves its monitors to the default');
 
 echo "ok, $n checks\n";
 @array_map("unlink", array_merge(glob("$tmp/media/*"), glob("$tmp/*")));
