@@ -4,6 +4,7 @@ $panel = 'monitors';
 $old = $old ?? [];
 ?>
 <h2 class="section-title"><span class="chip"><?= icon('magnifying-glass') ?></span>Your monitors</h2>
+<p class="text-muted small"><?= icon('circle-info') ?> A monitor keeps an eye on the public meetings of a single organization, like a city council, regional district or school board. Each monitor has its own AI agent, which checks the organization's website for new agendas and meeting videos, summarizes them in the voice you choose and keeps track of the items still working their way through. You choose where each monitor's updates go under Notifications.</p>
 <div class="nodes">
   <?php if (!$monitors): ?>
     <div class="node-empty">You're not monitoring anything yet. Add the council, board or organization you want to keep an eye on below.</div>
