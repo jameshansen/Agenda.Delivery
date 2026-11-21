@@ -172,9 +172,9 @@ main.is-loading{opacity:.55;transition:opacity .15s .1s;pointer-events:none}
 
 /* A WhatsApp destination's linking panel: its state, and the code to scan until it's linked. */
 .wa-holder{border-top:0;padding-top:.5rem}
-.wa-state{margin:0 0 .5rem;font-weight:600}
-.wa-is-open{color:var(--o-success)}
-.wa-is-closed,.wa-is-logged_out{color:var(--o-danger)}
+.wa-state{display:inline-flex;align-items:center;gap:.45em;margin:0 0 .5rem;padding:.3em .9em;border-radius:var(--o-r-pill);font-weight:600;box-shadow:var(--o-down)}
+.wa-is-open{color:color-mix(in srgb,var(--o-success) 45%,var(--o-ink));background:color-mix(in srgb,var(--o-success) 16%,transparent)}
+.wa-is-closed,.wa-is-logged_out{color:color-mix(in srgb,var(--o-danger) 60%,var(--o-ink));background:color-mix(in srgb,var(--o-danger) 12%,transparent)}
 .wa-link{display:flex;flex-wrap:wrap;align-items:center;gap:1.25rem}
 .wa-qr{width:220px;height:220px;padding:10px;border-radius:var(--o-r-sm);background:#fff;box-shadow:var(--o-up-sm)}
 .wa-link ol{max-width:22rem;padding-left:1.1rem}
