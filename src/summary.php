@@ -17,7 +17,7 @@ function summary_templates(): array
         'plain' => [
             'name' => 'Plain language (default)',
             'prompt' => "Write for a resident who didn't attend. Plain language, no jargon, no filler. Lead with what matters most: decisions, money, "
-                . "land use and anything a resident could speak to. Use short paragraphs or a few bullet points, under 250 words. "
+                . "land use and anything a resident could speak to. Use short paragraphs or a few bullet points. "
                 . "Name the item numbers or bylaw numbers people would search for, and say what's being decided, not just the title.",
         ],
         'strongtowns' => [
@@ -28,7 +28,7 @@ function summary_templates(): array
                 . "zoning and land use, walkable neighbourhoods, road and street design, and the long-term cost of infrastructure to the "
                 . "municipality, including who pays for new growth. Say where people can speak up or write in. Warm and plain, but stick "
                 . "to what's on the agenda. Close with a short, friendly line inviting the group to share it or come out. "
-                . "Keep it under 300 words and never use em or en dashes.",
+                . "Never use em or en dashes.",
         ],
         'active' => [
             'name' => 'Cycling and active transportation',
@@ -38,7 +38,7 @@ function summary_templates(): array
                 . "trails, transit access, traffic calming, speed limits, road design and road safety, and anything that changes how people "
                 . "walk, roll or cycle, with the location and the stage it's at. Say where people can speak up or write in. If nothing on the "
                 . "agenda touches these, say so in a friendly sentence. Close with a short line inviting the group to share it. "
-                . "Under 250 words and never use em or en dashes.",
+                . "Never use em or en dashes.",
         ],
         'decisions' => [
             'name' => 'Decisions only',
@@ -109,6 +109,35 @@ function summarize(string $prompt, string $title, string $text, ?int $monitorId,
     return llm(SUMMARY_GROUND_RULES . "\n\nThe writer's instructions:\n" . $prompt,
         ($earlier !== '' ? "Items still in motion from earlier meetings, as background:\n$earlier\n\n" : '')
         . "Meeting: $title\n\n" . mb_substr($text, 0, 60000), $monitorId, 'summary');
+}
+
+// Writes a new summary of a saved agenda or video with the monitor's current instructions, makes it the one
+// shown and sent from now on, and keeps it in the history. Returns null if there's no such item or no text.
+function rebuild_summary(array $m, string $kind, int $id): ?string
+{
+    $item = $kind === 'video'
+        ? row('SELECT id, title, transcript AS text, found_at FROM video WHERE id = ? AND monitor_id = ?', [$id, $m['id']])
+        : row('SELECT id, title, text, found_at FROM agenda WHERE id = ? AND monitor_id = ?', [$id, $m['id']]);
+    if (!$item || mb_strlen($item['text']) < 100) return null;
+    // Background is as items stood when it was found, so a rebuilt summary doesn't mention what happened later.
+    $text = summarize($m['summary_prompt'], $item['title'], $item['text'], (int)$m['id'], $item['found_at']);
+    q("UPDATE $kind SET summary = ? WHERE id = ?", [$text, $id]);
+    record_summary((int)$m['id'], $kind, $id, $m['summary_prompt'], $text);
+    return $text;
+}
+
+function record_summary(int $monitorId, string $kind, int $itemId, string $prompt, string $text): void
+{
+    q('INSERT INTO summary (monitor_id, kind, item_id, prompt, text) VALUES (?, ?, ?, ?, ?)',
+        [$monitorId, $kind, $itemId, trim($prompt) ?: default_summary_prompt(), $text]);
+}
+
+// A monitor's summaries grouped by "kind:id", newest first.
+function summary_history(int $monitorId): array
+{
+    $by = [];
+    foreach (rows('SELECT * FROM summary WHERE monitor_id = ? ORDER BY id DESC', [$monitorId]) as $s) $by[$s['kind'] . ':' . $s['item_id']][] = $s;
+    return $by;
 }
 
 // The monitor's pending items that were open at $before (now, by default), each as it stood then, one per line,

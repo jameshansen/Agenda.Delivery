@@ -376,6 +376,7 @@ function save_item(string $kind, array $m, string $url, array $args): string
         q('INSERT INTO agenda (monitor_id, url, title, meeting_date, meeting_type, summary, text) VALUES (?, ?, ?, ?, ?, ?, ?)',
             [$m['id'], $url, $title, $date, $type, $summary, mb_substr($text, 0, 200000)]);
     }
+    record_summary((int)$m['id'], $kind, (int)db()->lastInsertId(), $m['summary_prompt'], $summary);
     // Until the first check is done the agent is catching up on meetings already posted: saved, not sent.
     if (!$m['notify_from']) return "Saved, and its summary is written. This is the monitor's first check, so meetings already posted are saved without notifying its owner.\n";
     // A meeting dated before the monitor started was posted before it too, even if it's only being saved now.

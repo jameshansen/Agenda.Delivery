@@ -50,6 +50,38 @@ $designer = function (bool $starting) use ($draft, $preview, $slug) {
     <?php return ob_get_clean();
 };
 
+// An agenda or video's summary, the instructions behind it, a rebuild button and its earlier summaries.
+$history = $history ?? [];
+$summaryBlock = function (string $kind, array $item) use ($history, $slug) {
+    $all = $history["$kind:{$item['id']}"] ?? [];
+    $current = $all[0] ?? null;
+    $earlier = array_slice($all, 1);
+    $prompt = fn(?array $s) => $s && $s['prompt'] !== null
+        ? '<details class="summary-prompt"><summary>' . icon('pen-nib') . ' Instructions used</summary><div class="summary">' . h($s['prompt']) . '</div></details>'
+        : '<p class="small text-muted mb-0">Written before instructions were kept.</p>';
+    ob_start(); ?>
+    <div class="summary"><?= h($item['summary'] ?: 'No summary yet.') ?></div>
+    <?php if ($current): ?><?= $prompt($current) ?><?php endif ?>
+    <form method="post" action="/m/<?= $slug ?>/rebuild/<?= (int)$item['id'] ?>/<?= $kind ?>" class="mt-2">
+      <?= csrf_field() ?>
+      <button class="btn btn-sm" data-busy="Writing a new summary, this takes a few seconds"><?= icon('rotate') ?> Rebuild with the current instructions</button>
+    </form>
+    <?php if ($earlier): ?>
+      <details class="summary-history mt-2">
+        <summary><?= icon('clock-rotate-left') ?> Earlier summaries (<?= count($earlier) ?>)</summary>
+        <?php foreach ($earlier as $e): ?>
+          <div class="summary-old">
+            <div class="small text-muted mb-1"><?= h(ago($e['created_at'])) ?> · <?= h(substr($e['created_at'], 0, 16)) ?> UTC</div>
+            <div class="summary"><?= h($e['text']) ?></div>
+            <?= $prompt($e) ?>
+          </div>
+        <?php endforeach ?>
+      </details>
+    <?php endif ?>
+    <?php return ob_get_clean();
+};
+$opened = (string)($_GET['open'] ?? '');
+
 // Checkboxes for the site's meeting types; $checked is what's ticked.
 $typeBoxes = function (array $checked) use ($types) {
     ob_start(); ?>
@@ -139,10 +171,10 @@ $typeBoxes = function (array $checked) use ($types) {
     <?php endif ?>
     <div class="accordion">
       <?php foreach ($agendas as $i => $a): ?>
-        <details <?= $i === 0 ? 'open' : '' ?>>
+        <details <?= ($opened === '' && $i === 0) || $opened === 'agenda-' . $a['id'] ? 'open' : '' ?>>
           <summary><?= h($a['title']) ?> <span class="when"><?= h($typeName($a['meeting_type'])) ?> · <?= h($a['meeting_date'] ?? '') ?></span></summary>
           <div class="accordion-body">
-            <div class="summary"><?= h($a['summary'] ?: 'No summary yet.') ?></div>
+            <?= $summaryBlock('agenda', $a) ?>
             <p class="mt-2 mb-0"><a href="<?= href($a['url']) ?>" rel="noopener" target="_blank"><?= icon('arrow-up-right-from-square') ?> Open the agenda</a></p>
           </div>
         </details>
@@ -174,12 +206,12 @@ $typeBoxes = function (array $checked) use ($types) {
     <?php endif ?>
     <div class="accordion">
       <?php foreach ($videos as $v): ?>
-        <details>
+        <details <?= $opened === 'video-' . $v['id'] ? 'open' : '' ?>>
           <summary><?= h($v['title']) ?> <span class="when"><?= h($typeName($v['meeting_type'])) ?> · <?= h($v['meeting_date'] ?? '') ?></span></summary>
           <div class="accordion-body">
-            <div class="summary"><?= h($v['summary'] ?: 'No summary yet.') ?></div>
+            <?= $summaryBlock('video', $v) ?>
             <p class="mt-2 mb-0"><a href="<?= href($v['url']) ?>" rel="noopener" target="_blank"><?= icon('play') ?> Watch</a>
-              <?php if ($v['tlen']): ?>· transcript on file<?php endif ?></p>
+              <?php if ($v['tlen']): ?>· <a href="/m/<?= $slug ?>/transcript/<?= (int)$v['id'] ?>"><?= icon('download') ?> Download the transcript</a><?php endif ?></p>
           </div>
         </details>
       <?php endforeach ?>
@@ -221,7 +253,7 @@ $typeBoxes = function (array $checked) use ($types) {
     <form method="post" class="node-add mt-0">
       <?= csrf_field() ?>
       <h3><span class="chip" style="--c:var(--o-blue)"><?= icon('pen-nib') ?></span>Summary designer</h3>
-      <p class="small text-muted">Each agenda and video this monitor saves is summarized with these instructions. Changes apply from the next one; earlier summaries stay as they were.</p>
+      <p class="small text-muted">Each agenda and video this monitor saves is summarized with these instructions. New ones are written this way, and any agenda or video can be rebuilt with them under Agendas or Videos, which keeps its earlier summaries.</p>
       <?= $designer(false) ?>
     </form>
   </div>

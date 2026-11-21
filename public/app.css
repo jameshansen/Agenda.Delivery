@@ -11,6 +11,11 @@
 .navbar{flex-wrap:nowrap}
 .navbar .navbar-nav-open{display:flex;flex-basis:auto;flex-direction:row;align-items:center;gap:1rem;padding:0}
 .summary{white-space:pre-line}
+.summary-prompt,.summary-history{margin-top:.5rem;font-size:.875rem}
+.accordion .summary-prompt>summary,.accordion .summary-history>summary{display:list-item;list-style:revert;padding:0;font-weight:500;cursor:pointer;color:var(--o-ink)}
+.accordion .summary-prompt>summary::after,.accordion .summary-history>summary::after{content:none}
+.summary-prompt .summary{margin-top:.35rem;padding:.6rem .8rem;border-left:3px solid var(--o-blue);opacity:.85}
+.summary-old{margin-top:.75rem;padding-top:.75rem;border-top:1px solid rgba(127,127,127,.25)}
 /* Example text in fields is faint and clears as soon as the field is clicked. */
 .input::placeholder{color:var(--o-muted);opacity:.45}
 .input:focus::placeholder{color:transparent}

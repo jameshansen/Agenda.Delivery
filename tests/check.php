@@ -354,6 +354,15 @@ if (whatsapp_available()) {
     ok((int)val("SELECT wa_alerted FROM target WHERE user_id = ? AND kind = 'whatsapp'", [$waUser]) === 0, 'once it is back, the next drop is told again');
 }
 
+// Summary history: each summary is kept with its instructions, newest first, and templates set no word count.
+require_once __DIR__ . '/../src/summary.php';
+record_summary((int)$m['id'], 'agenda', 9001, 'First way', 'One');
+record_summary((int)$m['id'], 'agenda', 9001, '', 'Two');
+$hist = summary_history((int)$m['id'])['agenda:9001'] ?? [];
+ok(count($hist) === 2 && $hist[0]['text'] === 'Two' && $hist[1]['prompt'] === 'First way', 'summaries are kept newest first with their instructions');
+ok($hist[0]['prompt'] === default_summary_prompt(), 'a blank prompt is kept as the default it was written with');
+ok(!preg_grep('/\bwords\b/i', array_column(summary_templates(), 'prompt')), 'no template sets a word count');
+
 echo "ok, $n checks\n";
 @array_map("unlink", array_merge(glob("$tmp/media/*"), glob("$tmp/*")));
 @rmdir("$tmp/media");

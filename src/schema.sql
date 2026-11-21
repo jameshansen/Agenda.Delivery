@@ -180,6 +180,19 @@ CREATE TABLE IF NOT EXISTS video (
   UNIQUE (monitor_id, url)
 );
 
+-- Every summary written for an agenda or video, newest last, with the instructions it was written from.
+-- The agenda or video's own summary column is the newest of these.
+CREATE TABLE IF NOT EXISTS summary (
+  id          INTEGER PRIMARY KEY,
+  monitor_id  INTEGER NOT NULL REFERENCES monitor(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,                  -- agenda | video
+  item_id     INTEGER NOT NULL,
+  prompt      TEXT,                           -- NULL for summaries written before the instructions were kept
+  text        TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS summary_item ON summary (monitor_id, kind, item_id, id);
+
 -- Items still in motion: bylaws between readings, motions waiting on a staff report, deferred items.
 CREATE TABLE IF NOT EXISTS pending_item (
   id          INTEGER PRIMARY KEY,

@@ -256,12 +256,23 @@ if (preg_match('#^/m/(\d+)(?:/([a-z0-9-]*))?(?:/(\w+))?(?:/(\d+))?(?:/(\w+))?$#'
             'agendas' => rows('SELECT * FROM agenda WHERE monitor_id = ? ORDER BY coalesce(meeting_date, found_at) DESC LIMIT 30', [$mid]),
             'videos' => rows('SELECT id, url, title, meeting_date, meeting_type, summary, length(transcript) AS tlen FROM video WHERE monitor_id = ? ORDER BY coalesce(meeting_date, found_at) DESC LIMIT 20', [$mid]),
             'pending' => rows('SELECT * FROM pending_item WHERE monitor_id = ? AND open = 1 ORDER BY updated_at DESC', [$mid]),
+            'history' => summary_history($mid),
             'rules' => rows('SELECT r.*, t.name AS target_name, t.kind AS target_kind, t.paused, t.confirmed FROM rule r JOIN target t ON t.id = r.target_id WHERE r.user_id = ? AND r.monitor_id = ? ORDER BY r.id', [$uid, $mid]),
             'targets' => user_targets($uid),
         ]);
         exit;
     };
 
+    // A video's transcript as a text file.
+    if (!$post && $action === 'transcript') {
+        $v = row('SELECT title, meeting_date, transcript FROM video WHERE id = ? AND monitor_id = ?', [(int)$mm[3], $mid]);
+        if (!$v || $v['transcript'] === '') { http_response_code(404); render('not_found'); exit; }
+        $name = trim(($v['meeting_date'] ?? '') . ' ' . slugify($v['title'])) ?: 'transcript';
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . str_replace(' ', '-', $name) . '.txt"');
+        echo $v['transcript'];
+        exit;
+    }
     if (!$post) $view();
 
     switch ($action) {
@@ -286,6 +297,18 @@ if (preg_match('#^/m/(\d+)(?:/([a-z0-9-]*))?(?:/(\w+))?(?:/(\d+))?(?:/(\w+))?$#'
             if ($err) $view(['draft' => (string)($_POST['summary_prompt'] ?? ''), 'preview' => ['title' => '', 'text' => '', 'error' => $err, 'refused' => true]]);
             flash('Monitoring has started. The agent runs its first check within a minute.');
             break;
+        case 'rebuild':
+            // A new summary of one agenda or video from the current instructions; the earlier ones stay in its history.
+            $kind = $mm[4] === 'video' ? 'video' : 'agenda';
+            $tab = $kind === 'video' ? 't-videos' : 't-agendas';
+            if (too_many("preview:$uid", 30, 3600)) { flash("That's a lot of summaries in an hour. Wait a little and try again.", 'danger'); redirect("$back#$tab"); }
+            try {
+                $ok = rebuild_summary($m, $kind, (int)$mm[3]) !== null;
+                flash($ok ? 'Rebuilt with the current instructions. The earlier summary is kept below it.' : 'There is no text on file to summarize for that one.', $ok ? 'success' : 'danger');
+            } catch (Throwable $e) {
+                flash("The summary couldn't be written just now. Try again in a minute.", 'danger');
+            }
+            redirect("$back?open=$kind-" . (int)$mm[3] . "#$tab");
         case 'types':
             $picked = array_values(array_intersect(array_keys(site_meeting_types($m['site_types'])), (array)($_POST['types'] ?? [])));
             if (!$picked) { flash('Pick at least one kind of meeting to follow.', 'danger'); redirect("$back#t-types"); }
