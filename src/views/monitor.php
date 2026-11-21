@@ -78,7 +78,7 @@ $designer = function (bool $starting) use ($voices, $voiceSel, $noteDraft, $draf
 // An agenda or video's summaries, newest first. Every version is on the page; the bar's buttons swap which one shows.
 $history = $history ?? [];
 $versionsOf = fn(string $kind, array $item) => $history["$kind:{$item['id']}"]
-    ?? ($item['summary'] !== '' ? [['text' => $item['summary'], 'prompt' => null, 'created_at' => '']] : []);
+    ?? ($item['summary'] !== '' ? [['text' => $item['summary'], 'prompt' => null, 'voice_name' => null, 'note' => '', 'created_at' => '']] : []);
 $summaryBlock = function (string $kind, array $item) use ($versionsOf) {
     $versions = $versionsOf($kind, $item);
     ob_start(); ?>
@@ -88,15 +88,26 @@ $summaryBlock = function (string $kind, array $item) use ($versionsOf) {
         <?php if ($i): ?><p class="summary-older"><?= icon('clock-rotate-left') ?> An earlier revision, from <?= h(ago($s['created_at'])) ?>. The latest is the one that's sent.</p><?php endif ?>
         <div class="summary md"><?= text_to_html($s['text'], null) ?></div>
         <div class="summary-prompt">
-          <div class="label"><?= icon('head-side-talk') ?> Voice used</div>
-          <div class="summary"><?= $s['prompt'] !== null ? h($s['prompt']) : 'Written before voices were kept.' ?></div>
+          <div class="label"><?= icon('pen-nib') ?> Instructions used</div>
+          <?php if ($s['prompt'] === null): ?>
+            <p class="mb-0">Written before instructions were kept.</p>
+          <?php else: ?>
+            <?php if ($s['voice_name'] !== null): ?>
+              <p class="summary-voice"><?= icon('head-side-talk') ?> <?= $s['voice_name'] !== '' ? 'Voice: ' . h($s['voice_name']) : 'Instructions just for this monitor' ?></p>
+            <?php endif ?>
+            <div class="summary"><?= h($s['prompt']) ?></div>
+            <?php if ($s['note'] !== ''): ?>
+              <p class="summary-voice mt-2"><?= icon('location-dot') ?> For this monitor, also</p>
+              <div class="summary"><?= h($s['note']) ?></div>
+            <?php endif ?>
+          <?php endif ?>
         </div>
       </div>
     <?php endforeach ?>
     <?php return ob_get_clean();
 };
 // Under the summary: its versions, the instructions behind the one showing, Rebuild and a way to the instructions.
-$summaryBar = function (string $kind, array $item) use ($versionsOf, $slug, $m) {
+$summaryBar = function (string $kind, array $item) use ($versionsOf, $slug) {
     $versions = $versionsOf($kind, $item);
     ob_start(); ?>
     <div class="summary-bar">
@@ -109,17 +120,13 @@ $summaryBar = function (string $kind, array $item) use ($versionsOf, $slug, $m) 
       <?php endif ?>
       <div class="summary-actions">
         <?php if ($versions): ?>
-          <button type="button" class="btn btn-sm btn-ghost" data-toggle-prompt aria-pressed="false"><?= icon('eye') ?> Voice used</button>
+          <button type="button" class="btn btn-sm btn-ghost" data-toggle-prompt aria-pressed="false"><?= icon('eye') ?> Instructions used</button>
         <?php endif ?>
         <form method="post" action="/m/<?= $slug ?>/rebuild/<?= (int)$item['id'] ?>/<?= $kind ?>">
           <?= csrf_field() ?>
           <button class="btn btn-sm" title="Write a new revision in the current voice" data-busy="Rebuilding"><?= icon('rotate') ?> Rebuild</button>
         </form>
-        <?php if ($m['voice_id']): ?>
-          <a class="btn btn-sm" href="/voices/<?= (int)$m['voice_id'] ?>"><?= icon('head-side-talk') ?> Edit voice</a>
-        <?php else: ?>
-          <button type="button" class="btn btn-sm" data-goto-tab="#t-summary"><?= icon('head-side-talk') ?> Edit voice</button>
-        <?php endif ?>
+        <button type="button" class="btn btn-sm" data-goto-tab="#t-summary"><?= icon('pen-nib') ?> Edit instructions</button>
       </div>
     </div>
     <?php return ob_get_clean();
@@ -298,7 +305,7 @@ $typeBoxes = function (array $checked) use ($types) {
   <div class="tab-pane" id="t-summary">
     <form method="post" class="node-add mt-0">
       <?= csrf_field() ?>
-      <h3><span class="chip" style="--c:var(--o-blue)"><?= icon('head-side-talk') ?></span>Summary</h3>
+      <h3><span class="chip" style="--c:var(--o-blue)"><?= icon('pen-nib') ?></span>Summary</h3>
       <p class="small text-muted">Every agenda and video this monitor saves is summarized in this voice, and you can rebuild any of them in it under Agendas or Videos without losing the earlier revisions.</p>
       <?= $designer(false) ?>
     </form>

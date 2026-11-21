@@ -131,14 +131,17 @@ function rebuild_summary(array $m, string $kind, int $id): ?string
     $voice = monitor_voice($m);
     $text = summarize($voice['prompt'], $item['title'], $item['text'], (int)$m['id'], $item['found_at'], $voice['markdown']);
     q("UPDATE $kind SET summary = ? WHERE id = ?", [$text, $id]);
-    record_summary((int)$m['id'], $kind, $id, $voice['prompt'], $text);
+    record_summary((int)$m['id'], $kind, $id, $voice, $text);
     return $text;
 }
 
-function record_summary(int $monitorId, string $kind, int $itemId, string $prompt, string $text): void
+// Keeps a revision with what wrote it: the voice's name ('' for a monitor's own instructions), those instructions
+// and the monitor's note. $voice is what monitor_voice() returns.
+function record_summary(int $monitorId, string $kind, int $itemId, array $voice, string $text): void
 {
-    q('INSERT INTO summary (monitor_id, kind, item_id, prompt, text) VALUES (?, ?, ?, ?, ?)',
-        [$monitorId, $kind, $itemId, trim($prompt) ?: default_summary_prompt(), $text]);
+    q('INSERT INTO summary (monitor_id, kind, item_id, prompt, voice_name, note, text) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+        $monitorId, $kind, $itemId, trim($voice['base']) ?: default_summary_prompt(), $voice['voice']['name'] ?? '', $voice['note'] ?? '', $text,
+    ]);
 }
 
 // A monitor's summaries grouped by "kind:id", newest first.
@@ -204,7 +207,7 @@ function monitor_voice(array $m): array
 {
     $v = !empty($m['voice_id']) ? row('SELECT * FROM voice WHERE id = ?', [$m['voice_id']]) : null;
     $base = $v ? $v['prompt'] : (string)($m['summary_prompt'] ?? '');
-    return ['voice' => $v ?: null, 'base' => $base, 'prompt' => voice_prompt($base, (string)($m['voice_note'] ?? '')),
+    return ['voice' => $v ?: null, 'base' => $base, 'note' => trim((string)($m['voice_note'] ?? '')), 'prompt' => voice_prompt($base, (string)($m['voice_note'] ?? '')),
         'markdown' => (bool)($v ? $v['markdown'] : ($m['summary_markdown'] ?? 1))];
 }
 

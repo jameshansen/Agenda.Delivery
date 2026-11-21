@@ -199,3 +199,4 @@ main.is-loading{opacity:.55;transition:opacity .15s .1s;pointer-events:none}
 .option-stack input{margin-top:.3em}
 .option-text{display:flex;flex-direction:column;gap:.15rem}
 .option-hint{font-size:.85rem;font-weight:400;color:var(--o-muted)}
+.summary-voice{margin:0 0 .3rem;font-weight:600}

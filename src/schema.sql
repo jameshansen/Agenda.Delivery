@@ -213,7 +213,9 @@ CREATE TABLE IF NOT EXISTS summary (
   monitor_id  INTEGER NOT NULL REFERENCES monitor(id) ON DELETE CASCADE,
   kind        TEXT NOT NULL,                  -- agenda | video
   item_id     INTEGER NOT NULL,
-  prompt      TEXT,                           -- NULL for summaries written before the instructions were kept
+  prompt      TEXT,                           -- the voice's instructions (or the monitor's own); NULL from before they were kept
+  voice_name  TEXT,                           -- the voice it was written in, '' for a monitor's own instructions, NULL from before voices
+  note        TEXT NOT NULL DEFAULT '',       -- the monitor's own note added to the voice
   text        TEXT NOT NULL,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );

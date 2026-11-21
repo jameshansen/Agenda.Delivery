@@ -197,7 +197,7 @@ document.addEventListener('click', e => {
     if (!tab) return;
     tab.click();
     tab.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    document.querySelector(`${go.dataset.gotoTab} textarea`)?.focus({ preventScroll: true });
+    [...document.querySelectorAll(`${go.dataset.gotoTab} select, ${go.dataset.gotoTab} textarea`)].find(f => f.offsetParent)?.focus({ preventScroll: true });
   }
 });
 

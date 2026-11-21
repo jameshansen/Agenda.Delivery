@@ -356,11 +356,12 @@ if (whatsapp_available()) {
 
 // Summary history: each summary is kept with its instructions, newest first, and templates set no word count.
 require_once __DIR__ . '/../src/summary.php';
-record_summary((int)$m['id'], 'agenda', 9001, 'First way', 'One');
-record_summary((int)$m['id'], 'agenda', 9001, '', 'Two');
+record_summary((int)$m['id'], 'agenda', 9001, ['voice' => ['name' => 'Todd'], 'base' => 'First way', 'note' => 'Say Township'], 'One');
+record_summary((int)$m['id'], 'agenda', 9001, ['voice' => null, 'base' => '', 'note' => ''], 'Two');
 $hist = summary_history((int)$m['id'])['agenda:9001'] ?? [];
 ok(count($hist) === 2 && $hist[0]['text'] === 'Two' && $hist[1]['prompt'] === 'First way', 'summaries are kept newest first with their instructions');
 ok($hist[0]['prompt'] === default_summary_prompt(), 'a blank prompt is kept as the default it was written with');
+ok($hist[1]['voice_name'] === 'Todd' && $hist[1]['note'] === 'Say Township' && $hist[0]['voice_name'] === '', 'a revision keeps the voice it was written in and the monitor\'s note');
 ok(!preg_grep('/\bwords\b/i', array_column(summary_templates(), 'prompt')), 'no template sets a word count');
 
 // Markdown summaries: formatted on the site and in email, translated for WhatsApp, plain for Pushover.
