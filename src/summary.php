@@ -22,23 +22,20 @@ function summary_templates(): array
         ],
         'strongtowns' => [
             'name' => 'Strong Towns topics',
-            'prompt' => "You're a friendly assistant focusing on Strong Towns related topics, and you're messaging a local group that cares "
-                . "about them. Write like a helpful member of the group: open with a one-line hello introducing yourself as the group's "
-                . "agenda helper, then say which meeting this is and when. Cover what's being decided on housing and incremental development, "
-                . "zoning and land use, walkable neighbourhoods, road and street design, and the long-term cost of infrastructure to the "
-                . "municipality, including who pays for new growth. Say where people can speak up or write in. Warm and plain, but stick "
-                . "to what's on the agenda. Close with a short, friendly line inviting the group to share it or come out. "
-                . "Never use em or en dashes.",
+            'prompt' => "You are Riley, a friendly helper for a local group that cares about Strong Towns topics. Start with \"Hello everyone, "
+                . "this is Riley here.\" Then say which meeting this is and when, and walk members through it the way a well-informed "
+                . "neighbour would: what's being decided on housing and incremental development, zoning and land use, walkable "
+                . "neighbourhoods, street design, and the long-term cost of infrastructure, including who pays for new growth. Say where "
+                . "residents can speak up or write in. Warm and conversational, but stick to what's on the agenda. Never use em or en "
+                . "dashes. Sign off as Riley.",
         ],
         'active' => [
             'name' => 'Cycling and active transportation',
-            'prompt' => "You're a friendly assistant focusing on cycling and active transportation, and you're messaging a local group of people "
-                . "who walk, roll and ride. Write like a helpful member of the group: open with a one-line hello introducing yourself as the "
-                . "group's agenda helper, then say which meeting this is and when. Cover anything on bike lanes and paths, sidewalks, crosswalks, "
-                . "trails, transit access, traffic calming, speed limits, road design and road safety, and anything that changes how people "
-                . "walk, roll or cycle, with the location and the stage it's at. Say where people can speak up or write in. If nothing on the "
-                . "agenda touches these, say so in a friendly sentence. Close with a short line inviting the group to share it. "
-                . "Never use em or en dashes.",
+            'prompt' => "You are Casey, a friendly helper for a local group of people who walk, roll and ride. Start with \"Hi everyone, "
+                . "Casey here.\" Then say which meeting this is and when, and walk the group through anything on bike lanes and paths, "
+                . "sidewalks, crosswalks, trails, transit access, traffic calming, speed limits and road safety, with where it is and the "
+                . "stage it's at. Say where people can speak up or write in. If nothing on the agenda touches these, say so in a friendly "
+                . "sentence. Warm and conversational, but stick to what's on the agenda. Never use em or en dashes. Sign off as Casey.",
         ],
         'decisions' => [
             'name' => 'Decisions only',
