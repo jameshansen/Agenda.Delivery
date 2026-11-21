@@ -128,7 +128,7 @@ a.node-main:hover .node-title{color:var(--o-link)}
   .panel-head,.panel-body{padding-inline:.9rem}
   .panel-head .nav-tabs{flex-wrap:nowrap;gap:0}
   .panel-head .nav-tabs .nav-link{padding:.5em .6em;font-size:.88rem;white-space:nowrap}
-  .panel-head .nav-tabs .nav-link .fa-fw{display:none}
+  .panel-head .nav-tabs .nav-link :is(.fa-fw,.icon-svg){display:none}
   /* The monitor's own tabs stay on one row and scroll sideways rather than stacking. */
   .panel-body>.nav-tabs{display:flex;flex-wrap:nowrap;max-width:100%;overflow-x:auto;scrollbar-width:none}
   .panel-body>.nav-tabs .nav-link{white-space:nowrap}
