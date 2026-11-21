@@ -9,7 +9,7 @@ $previewOn = (int)($_POST['preview_on'] ?? ($users ? (int)val('SELECT id FROM mo
 $plural = fn(int $n) => $n === 1 ? '1 monitor' : "$n monitors";
 $base = $voice ? '/voices/' . (int)$voice['id'] : '/voices/new';
 ?>
-<p class="small text-muted prose">A voice is the set of instructions your summaries are written with, like who's writing, the tone, what to cover and how long they should be. You can give one voice to as many monitors as you like and any change to it applies to all of them, while each monitor can still add a note of its own under its Summary tab.</p>
+<p class="small text-muted"><?= icon('circle-info') ?> A voice is the set of instructions your summaries are written with, like who's writing, the tone, what to cover and how long they should be. You can give one voice to as many monitors as you like and any change to it applies to all of them, while each monitor can still add a note of its own under its Summary tab.</p>
 
 <div class="lists-layout">
 <aside class="list-rail" aria-label="Voices">
@@ -25,7 +25,7 @@ $base = $voice ? '/voices/' . (int)$voice['id'] : '/voices/new';
   <form method="post" action="/voices/new/save" class="list-rail-new">
     <?= csrf_field() ?>
     <label class="label small" for="voice_name"><?= icon('plus') ?> New voice</label>
-    <input class="input" id="voice_name" name="name" maxlength="60" required placeholder="Riley for the Strong Towns group">
+    <input class="input" id="voice_name" name="name" maxlength="60" required placeholder="Cycling club">
     <input type="hidden" name="prompt" value="<?= h(default_summary_prompt()) ?>">
     <input type="hidden" name="markdown" value="1">
     <button class="btn btn-sm btn-primary btn-block" data-busy="Creating"><?= icon('plus') ?> Create voice</button>

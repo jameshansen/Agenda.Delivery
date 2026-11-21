@@ -228,7 +228,7 @@ $typeBoxes = function (array $checked) use ($types) {
   </div>
 
   <div class="tab-pane" id="t-pending">
-    <p class="text-muted small prose">Items still working through the process, such as bylaws between readings or motions waiting on a staff report. They drop off once settled.</p>
+    <p class="text-muted small"><?= icon('circle-info') ?> Items still working through the process, such as bylaws between readings or motions waiting on a staff report. They drop off once settled.</p>
     <div class="nodes">
       <?php if (!$pending): ?><div class="node-empty">Nothing pending right now.</div><?php endif ?>
       <?php foreach ($pending as $p): ?>
@@ -265,7 +265,7 @@ $typeBoxes = function (array $checked) use ($types) {
   </div>
 
   <div class="tab-pane" id="t-notify">
-    <p class="text-muted small prose">Where this monitor's news goes and what's sent to each place. Destinations and mailing lists are kept under <a href="/notifications">Notifications</a>.</p>
+    <p class="text-muted small"><?= icon('circle-info') ?> Where this monitor's news goes and what's sent to each place. Destinations and mailing lists are kept under <a href="/notifications">Notifications</a>.</p>
     <div class="nodes">
       <?php if (!$rules): ?><div class="node-empty">This monitor doesn't send you anything yet. Add a notification below.</div><?php endif ?>
       <?php foreach ($rules as $r): [$kindLabel, $kindIcon, $kindColour] = destination_kinds()[$r['target_kind']] ?? [$r['target_kind'], '', 'var(--o-secondary)']; ?>

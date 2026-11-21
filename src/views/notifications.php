@@ -22,7 +22,7 @@ $pauseButton = function (array $t) {
 
 <div>
   <div class="tab-pane <?= $tab === 'destinations' ? 'active' : '' ?>" id="n-destinations">
-    <p class="text-muted small prose">Where your news goes. Your own email is always here. Add other places, then choose under What's sent which monitors send to each.</p>
+    <p class="text-muted small"><?= icon('circle-info') ?> A destination is a place agenda.delivery delivers updates from your monitors, like summaries of new agendas and meeting videos and changes to pending items. It can be an email address, a mailing list, a Discord channel, a WhatsApp group, your phone through Pushover or a webhook. Your own email address is always one of them, and once you've added others you can choose under What's sent which monitors send to each one and what they send.</p>
     <div class="nodes">
       <?php foreach ($others as $t): [$kindLabel, $kindIcon, $kindColour] = $kinds[$t['kind']] ?? [$t['kind'], '', 'var(--o-secondary)']; ?>
         <div class="node has-edit <?= $t['paused'] || !$t['confirmed'] ? 'is-quiet' : '' ?>" style="--c:<?= $kindColour ?>">
@@ -130,7 +130,7 @@ $pauseButton = function (array $t) {
   </div>
 
   <div class="tab-pane <?= $tab === 'rules' ? 'active' : '' ?>" id="n-rules">
-    <p class="text-muted small prose">Each line is one notification: a monitor, where its news goes, and what's sent. A new monitor starts by sending its summaries to your email.</p>
+    <p class="text-muted small"><?= icon('circle-info') ?> Each line is one notification: a monitor, where its news goes, and what's sent. A new monitor starts by sending its summaries to your email.</p>
     <div class="nodes">
       <?php if (!$monitors): ?>
         <div class="node-empty">Nothing to send yet. <a href="/">Add a monitor</a> and its news comes to your email.</div>
@@ -159,7 +159,7 @@ $pauseButton = function (array $t) {
   </div>
 
   <div class="tab-pane <?= $tab === 'history' ? 'active' : '' ?>" id="n-history">
-    <p class="text-muted small prose">What your monitors had to say lately, and what became of each.</p>
+    <p class="text-muted small"><?= icon('circle-info') ?> What your monitors had to say lately, and what became of each.</p>
     <div class="nodes">
       <?php if (!$history): ?><div class="node-empty">Nothing yet. This fills in as your monitors find new agendas, videos and pending items.</div><?php endif ?>
       <?php foreach ($history as $d): ?>

@@ -36,7 +36,7 @@ $panel = 'settings';
 <form method="post" action="/settings/branding" enctype="multipart/form-data" class="node-add">
   <?= csrf_field() ?>
   <h3><span class="chip"><?= icon('building') ?></span>Your organization</h3>
-  <p class="small text-muted prose">A name and logo for the email your mailing lists send. A list uses them when its settings say to send as custom with your organization settings, and a list can also have its own. Mail to your other destinations always comes from agenda.delivery.</p>
+  <p class="small text-muted"><?= icon('circle-info') ?> A name and logo for the email your mailing lists send. A list uses them when its settings say to send as custom with your organization settings, and a list can also have its own. Mail to your other destinations always comes from agenda.delivery.</p>
   <div class="row g-3">
     <div class="col-md-6"><label class="label" for="org_name">Organization name</label>
       <input class="input" id="org_name" name="org_name" maxlength="40" placeholder="Maple Street Neighbours" value="<?= h($me['org_name']) ?>">

@@ -159,7 +159,7 @@ require __DIR__ . '/_notify_tabs.php';
   </div>
 
   <div class="tab-pane" id="l-preview">
-    <p class="text-muted small prose">How an email from this list looks to someone on it, using a made-up agenda from a made-up city. Send me a test sends you this same email.</p>
+    <p class="text-muted small"><?= icon('circle-info') ?> How an email from this list looks to someone on it, using a made-up agenda from a made-up city. Send me a test sends you this same email.</p>
     <div class="mail-preview">
       <dl class="mail-head">
         <dt>From</dt><dd><strong><?= h($fromName) ?></strong> &lt;<?= h((string)cfg('mail_from')) ?>&gt;</dd>
