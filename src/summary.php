@@ -16,12 +16,12 @@ function summary_templates(): array
     return [
         'plain' => [
             'name' => 'News summary (default)',
-            'prompt' => "Write it like a short news item, not a report: a few short paragraphs of one to three sentences each, with a blank "
-                . "line between them. No bullet points, headings "
-                . "or labelled sections, even as plain text: don't write \"Topic: detail\" one per line or sentence (for example "
-                . "\"Infrastructure: council approved X. Housing: council discussed Y.\"), which is a list dressed up as prose. Write it "
-                . "the way you'd describe the meeting to someone out loud, with one topic flowing into the next. Focus on the most "
-                . "significant decisions and discussions.",
+            'prompt' => "Start with 2 to 4 sentences as one flowing paragraph, like a short news item, not a report. Write it the way you'd "
+                . "describe the meeting to someone out loud, with one topic flowing into the next, and focus on the most significant "
+                . "decisions and discussions. Keep labels out of that paragraph: don't write \"Topic: detail\" one per sentence (for "
+                . "example \"Infrastructure: council approved X. Housing: council discussed Y.\"), which is a list dressed up as prose. "
+                . "Then leave a blank line and list the 3 to 5 most significant items as highlights, one per line: a bullet, a short tag, "
+                . "a colon, and one sentence.",
         ],
         'strongtowns' => [
             'name' => 'Strong Towns topics',
