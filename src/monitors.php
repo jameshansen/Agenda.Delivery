@@ -119,7 +119,8 @@ function save_choices(array $m, array $in): ?string
     $prompt = trim((string)($in['summary_prompt'] ?? ''));
     if ($prompt === '' || mb_strlen($prompt) > 4000) return 'Write how summaries should be written, up to 4000 characters.';
     if ($refused = screen_summary_prompt($prompt, (int)$m['id'])) return $refused;
-    q("UPDATE monitor SET meeting_types = ?, summary_prompt = ?, state = 'ready' WHERE id = ?", [json_encode($picked), $prompt, $m['id']]);
+    q("UPDATE monitor SET meeting_types = ?, summary_prompt = ?, summary_markdown = ?, state = 'ready' WHERE id = ?",
+        [json_encode($picked), $prompt, empty($in['summary_markdown']) ? 0 : 1, $m['id']]);
     if ($m['state'] !== 'ready') {
         q('UPDATE agent SET run_requested = 1 WHERE monitor_id = ?', [$m['id']]);
         nudge_service($m['slug']);

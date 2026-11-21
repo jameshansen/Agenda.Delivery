@@ -35,6 +35,7 @@ function deliver(array $t, string $subject, string $text, string $url, array $ex
     if ($t['kind'] === 'whatsapp') return wa_send($t, $subject, $text, $url);
     if ($t['kind'] === 'pushover') {
         // A phone notification: the subject as its title, the news trimmed to Pushover's 1024 characters, and the link.
+        $text = md_plain($text);
         $msg = mb_strlen($text) > 1024 ? mb_substr($text, 0, 1020) . '…' : $text;
         [$code, $out] = http_request('POST', 'https://api.pushover.net/1/messages.json', http_build_query(array_filter([
             'token' => $t['token'] !== '' ? $t['token'] : cfg('pushover_token'), 'user' => $t['address'],
@@ -166,28 +167,81 @@ function link_urls(string $text, string $colour = '#3d5e2b'): string
     return $out;
 }
 
-// Plain text as simple HTML: blank lines separate paragraphs, lines that start with a bullet become a list,
-// and a line of dashes (between the items of a digest) becomes a rule.
-function text_to_html(string $text, string $link = '#3d5e2b'): string
+// Summaries, list text and digests as HTML. It reads Markdown (headings, bold, italics, lists, links and rules) and
+// plain text alike: a single line break stays a line break, so plain summaries with • lines read as they always have.
+// With $link set, every tag carries inline styles for email and links take that colour; with null, the site's CSS styles it.
+function text_to_html(string $text, ?string $link = '#3d5e2b'): string
 {
+    $st = fn(string $css) => $link !== null ? " style=\"$css\"" : '';
     $out = '';
-    $p = 'margin:0 0 14px';
     foreach (preg_split('/\n\s*\n/', trim(str_replace("\r", '', $text))) as $block) {
         if ($block === '') continue;
-        if (preg_match('/^(?:- ){2,}-$/', trim($block))) { $out .= '<hr style="border:0;border-top:1px solid #e4e0d2;margin:22px 0">' . "\n"; continue; }
         $para = $items = [];
-        $flush = function () use (&$out, &$para, &$items, $p, $link) {
-            if ($para) $out .= "<p style=\"$p\">" . implode("<br>\n", array_map(fn($x) => link_urls($x, $link), $para)) . "</p>\n";
-            if ($items) $out .= "<ul style=\"$p;padding-left:22px\">\n" . implode('', array_map(fn($i) => '<li style="margin:0 0 6px">' . link_urls($i, $link) . "</li>\n", $items)) . "</ul>\n";
+        $ordered = false;
+        $flush = function () use (&$out, &$para, &$items, &$ordered, $st, $link) {
+            if ($para) $out .= '<p' . $st('margin:0 0 14px') . '>' . implode("<br>\n", array_map(fn($x) => md_inline($x, $link), $para)) . "</p>\n";
+            if ($items) {
+                $tag = $ordered ? 'ol' : 'ul';
+                $out .= "<$tag" . $st('margin:0 0 14px;padding-left:22px') . ">\n"
+                    . implode('', array_map(fn($i) => '<li' . $st('margin:0 0 6px') . '>' . md_inline($i, $link) . "</li>\n", $items)) . "</$tag>\n";
+            }
             $para = $items = [];
         };
         foreach (explode("\n", $block) as $line) {
-            if (preg_match('/^\s*[•*-]\s+(.+)$/u', $line, $mm)) { if ($para) $flush(); $items[] = $mm[1]; }
-            else { if ($items) $flush(); $para[] = $line; }
+            $line = trim($line);
+            // A line of dashes or stars, such as the one between a digest's items, is a rule.
+            if (preg_match('/^([-*_])\s*(?:\1\s*){2,}$/', $line)) { $flush(); $out .= '<hr' . $st('border:0;border-top:1px solid #e4e0d2;margin:22px 0') . ">\n"; continue; }
+            if (preg_match('/^#{1,6}\s+(.+?)\s*#*$/', $line, $mm)) { $flush(); $out .= '<h3' . $st('margin:18px 0 8px;font-size:18px;line-height:1.3') . '>' . md_inline($mm[1], $link) . "</h3>\n"; continue; }
+            if (preg_match('/^(?:[•*-]|(\d+)[.)])\s+(.+)$/u', $line, $mm)) {
+                if ($para || ($items && ($mm[1] !== '') !== $ordered)) $flush();
+                $ordered = $mm[1] !== '';
+                $items[] = $mm[2];
+                continue;
+            }
+            if ($items) $flush();
+            $para[] = $line;
         }
         $flush();
     }
     return $out;
+}
+
+// One line of Markdown as HTML: escaped, with links ([text](https://...) or a bare address) and bold and italics.
+function md_inline(string $s, ?string $link): string
+{
+    $style = $link !== null ? ' style="color:' . h($link) . '"' : '';
+    $keep = [];
+    // Links come out first, so the underscores and stars in an address aren't read as emphasis.
+    $s = preg_replace_callback('#\[([^\]\n]+)\]\((https?://[^\s)]+)\)|(https?://[^\s<>"\']*[^\s<>"\'.,;:!?)\]])#', function ($m) use (&$keep, $style) {
+        $bare = ($m[3] ?? '') !== '';
+        $keep[] = '<a href="' . h($bare ? $m[3] : $m[2]) . "\"$style>" . ($bare ? h($m[3]) : md_emphasis(h($m[1]))) . '</a>';
+        return "\x01" . (count($keep) - 1) . "\x01";
+    }, $s);
+    return preg_replace_callback('/\x01(\d+)\x01/', fn($m) => $keep[(int)$m[1]], md_emphasis(h($s)));
+}
+
+function md_emphasis(string $s): string
+{
+    $s = preg_replace('/\*\*(?=\S)(.+?)(?<=\S)\*\*|__(?=\S)(.+?)(?<=\S)__/', '<strong>$1$2</strong>', $s);
+    return preg_replace('/(?<![\w*])\*(?=\S)([^*]+?)(?<=\S)\*(?![\w*])|(?<!\w)_(?=\S)([^_]+?)(?<=\S)_(?!\w)/u', '<em>$1$2</em>', $s);
+}
+
+// Markdown as plain text, for Pushover, which can't show it: the markers go, links read "text (address)" and list
+// items start with a bullet.
+function md_plain(string $text): string
+{
+    $text = preg_replace('#\[([^\]\n]+)\]\((https?://[^\s)]+)\)#', '$1 ($2)', $text);
+    return preg_replace(['/^[ \t]*#{1,6}[ \t]+(.+?)[ \t]*#*$/m', '/^[ \t]*[*-][ \t]+/m', '/\*\*(?=\S)(.+?)(?<=\S)\*\*|__(?=\S)(.+?)(?<=\S)__/',
+        '/(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])/'], ['$1', '• ', '$1$2', '$1'], $text);
+}
+
+// Markdown in WhatsApp's own formatting: *bold*, _italic_, headings as bold lines and links as "text (address)".
+// Its lists already look the same.
+function wa_markdown(string $text): string
+{
+    $text = preg_replace('#\[([^\]\n]+)\]\((https?://[^\s)]+)\)#', '$1 ($2)', $text);
+    $text = preg_replace('/(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])/', '_$1_', $text);   // italics first, before bold becomes single stars
+    return preg_replace(['/^[ \t]*#{1,6}[ \t]+(.+?)[ \t]*#*$/m', '/\*\*(?=\S)(.+?)(?<=\S)\*\*|__(?=\S)(.+?)(?<=\S)__/'], ['*$1*', '*$1$2*'], $text);
 }
 
 // A made-up agenda notification from a made-up city, laid out for this list exactly as a real one would be.

@@ -65,7 +65,7 @@ function wa_panel(array $t): string
 function wa_send(array $t, string $subject, string $text, string $url): array
 {
     if (!preg_match('/^[0-9]+(-[0-9]+)?@g\.us$/', $t['address'])) return ['Choose a group for it to send to first.', 0];
-    $msg = "*$subject*" . ($text !== '' ? "\n\n$text" : '') . ($url !== '' ? "\n\n$url" : '');
+    $msg = "*$subject*" . ($text !== '' ? "\n\n" . wa_markdown($text) : '') . ($url !== '' ? "\n\n$url" : '');
     if (mb_strlen($msg) > 4000) $msg = mb_substr($msg, 0, 3990 - mb_strlen($url)) . "…\n\n$url";
     [$code, $r] = wa_call((int)$t['id'], 'POST', '/send', ['to' => $t['address'], 'text' => $msg], 30);
     if ($code === 200) return [null, 1];

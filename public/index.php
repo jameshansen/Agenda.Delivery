@@ -236,6 +236,7 @@ if (!$post && preg_match('#^/m/([a-z][a-z0-9-]*)$#', $path, $mm)) {
 // is for reading, and a missing or outdated one sends a page view to the current address.
 if (preg_match('#^/m/(\d+)(?:/([a-z0-9-]*))?(?:/(\w+))?(?:/(\d+))?(?:/(\w+))?$#', $path, $found)) {
     require_once __DIR__ . '/../src/summary.php';
+    require_once __DIR__ . '/../src/notify.php';   // text_to_html(), which shows summaries formatted
     // A monitor is private to the account that added it.
     $m = own_monitor($uid, (int)$found[1]);
     if (!$m) { http_response_code(404); render('not_found'); exit; }
@@ -327,7 +328,7 @@ if (preg_match('#^/m/(\d+)(?:/([a-z0-9-]*))?(?:/(\w+))?(?:/(\d+))?(?:/(\w+))?$#'
                 $view(['draft' => $prompt, 'preview' => ['title' => '', 'text' => '', 'error' => $refused, 'refused' => true]]);
             }
             if ($action === 'summary') {
-                q('UPDATE monitor SET summary_prompt = ? WHERE id = ?', [$prompt, $mid]);
+                q('UPDATE monitor SET summary_prompt = ?, summary_markdown = ? WHERE id = ?', [$prompt, empty($_POST['summary_markdown']) ? 0 : 1, $mid]);
                 flash('Saved. New agendas and videos are summarized this way.');
                 redirect("$back#t-summary");
             }
@@ -337,7 +338,7 @@ if (preg_match('#^/m/(\d+)(?:/([a-z0-9-]*))?(?:/(\w+))?(?:/(\d+))?(?:/(\w+))?$#'
             $preview = null;
             if ($latest) {
                 try {
-                    $preview = ['title' => $latest['title'], 'text' => summarize($prompt, $latest['title'], $latest['text'], $mid, $latest['found_at'])];
+                    $preview = ['title' => $latest['title'], 'text' => summarize($prompt, $latest['title'], $latest['text'], $mid, $latest['found_at'], !empty($_POST['summary_markdown']))];
                 } catch (Throwable $e) {
                     $preview = ['title' => $latest['title'], 'text' => '', 'error' => "The preview couldn't be written just now. Try again in a minute."];
                 }

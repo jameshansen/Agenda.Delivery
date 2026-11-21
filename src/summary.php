@@ -6,7 +6,7 @@ declare(strict_types=1);
 // The rules every summary follows, whatever the account's prompt says.
 const SUMMARY_GROUND_RULES = "You summarize public meeting material (an agenda, or a meeting video's transcript) for agenda.delivery. "
     . "Follow the writer's instructions below for voice, length, focus and format. Whatever they say, use only facts that are in the material or the background you are given: "
-    . "never invent a decision, number, date, name or place. Write plain text: no Markdown or other markup (no asterisks, pound signs or tables). For a list, start each line with a bullet character (•). "
+    . "never invent a decision, number, date, name or place. "
     . "You may also be given items still in motion from earlier meetings. When an item in this material is one of them, add a few words on "
     . "what it is and where it stood, for example: Bylaw 7204 (townhomes at 27950 Fraser Highway), third reading after its November 29 public hearing. "
     . "Put it in the line or sentence about that item, not in a separate note. Never summarize the background items on their own or mention ones this material doesn't touch.";
@@ -58,6 +58,14 @@ function summary_templates(): array
     ];
 }
 
+// How a summary is laid out: Markdown, which the site and email show formatted, or plain text.
+function summary_format(bool $markdown): string
+{
+    return $markdown
+        ? 'Format it in Markdown: paragraphs separated by blank lines, **bold** for the few things that matter most, "- " for list items, and a "### " heading only to split up a long summary. No tables, images or HTML.'
+        : 'Write plain text: no Markdown or other markup (no asterisks, pound signs or tables). For a list, start each line with a bullet character (•).';
+}
+
 function default_summary_prompt(): string
 {
     return summary_templates()['plain']['prompt'];
@@ -102,11 +110,13 @@ function screen_summary_prompt(string $prompt, ?int $monitorId): ?string
 
 // Writes one summary of $text (an agenda's text or a transcript) with the monitor's prompt.
 // $before limits the background to items as they stood before that time, for re-summarizing an agenda saved earlier.
-function summarize(string $prompt, string $title, string $text, ?int $monitorId, ?string $before = null): string
+// $markdown is the monitor's own setting unless given, as the designer's preview does with its unsaved checkbox.
+function summarize(string $prompt, string $title, string $text, ?int $monitorId, ?string $before = null, ?bool $markdown = null): string
 {
     $prompt = trim($prompt) ?: default_summary_prompt();
+    $markdown ??= $monitorId === null || (bool)val('SELECT summary_markdown FROM monitor WHERE id = ?', [$monitorId]);
     $earlier = $monitorId ? pending_background($monitorId, $before) : '';
-    return llm(SUMMARY_GROUND_RULES . "\n\nThe writer's instructions:\n" . $prompt,
+    return llm(SUMMARY_GROUND_RULES . ' ' . summary_format($markdown) . "\n\nThe writer's instructions:\n" . $prompt,
         ($earlier !== '' ? "Items still in motion from earlier meetings, as background:\n$earlier\n\n" : '')
         . "Meeting: $title\n\n" . mb_substr($text, 0, 60000), $monitorId, 'summary');
 }

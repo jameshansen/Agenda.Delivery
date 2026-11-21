@@ -363,6 +363,20 @@ ok(count($hist) === 2 && $hist[0]['text'] === 'Two' && $hist[1]['prompt'] === 'F
 ok($hist[0]['prompt'] === default_summary_prompt(), 'a blank prompt is kept as the default it was written with');
 ok(!preg_grep('/\bwords\b/i', array_column(summary_templates(), 'prompt')), 'no template sets a word count');
 
+// Markdown summaries: formatted on the site and in email, translated for WhatsApp, plain for Pushover.
+require_once __DIR__ . '/../src/notify.php';
+$md = "Council meets **Monday** at 7 pm.\n\n### Highlights\n- **Housing:** Bylaw 7103 rezones [20569 Ridge Road](https://example.com/a_b).\n- *Parks:* \$470,000 from reserves.";
+$html = text_to_html($md, null);
+ok(str_contains($html, '<strong>Monday</strong>') && str_contains($html, '<h3>Highlights</h3>') && substr_count($html, '<li>') === 2
+    && str_contains($html, '<a href="https://example.com/a_b">20569 Ridge Road</a>') && str_contains($html, '<em>Parks:</em>'), 'Markdown becomes HTML');
+ok(str_contains(text_to_html("One\n• first\n• second\n\n- - - - -\n\nTwo"), '<li style="margin:0 0 6px">first</li>')
+    && str_contains(text_to_html("A\n\n- - - - -\n\nB"), '<hr'), 'plain summaries and digest rules still read as before');
+ok(!str_contains(text_to_html('<script>x</script> [y](javascript:alert(1))', null), '<script') && !str_contains(text_to_html('[y](javascript:alert(1))', null), 'href="javascript'),
+    'a summary cannot add HTML or a script link');
+ok(wa_markdown("### Top\n**Bold** and *soft* [site](https://x.ca)") === "*Top*\n*Bold* and _soft_ site (https://x.ca)", 'WhatsApp gets its own bold, italics and links');
+ok(md_plain("### Top\n- **Bold** and *soft*") === "Top\n• Bold and soft", 'Pushover gets plain text');
+ok(str_contains(summary_format(true), 'Markdown') && str_contains(summary_format(false), 'plain text'), 'the summary writer is told which format to use');
+
 echo "ok, $n checks\n";
 @array_map("unlink", array_merge(glob("$tmp/media/*"), glob("$tmp/*")));
 @rmdir("$tmp/media");

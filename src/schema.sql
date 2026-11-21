@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS monitor (
   state          TEXT NOT NULL DEFAULT 'setup',      -- setup (site being learned) | choose (pick types and summary) | ready
   meeting_types  TEXT NOT NULL DEFAULT '[]',         -- JSON list of the site's meeting type keys this account tracks
   summary_prompt TEXT NOT NULL DEFAULT '',           -- how this account's summaries are written
+  summary_markdown INTEGER NOT NULL DEFAULT 1,       -- summaries are written in Markdown rather than plain text
   -- Set when the first check finishes with the site working. Until then the agent is catching up on meetings
   -- already posted, which are saved but not sent: notifications are for what appears after the monitor is added.
   notify_from    TEXT,

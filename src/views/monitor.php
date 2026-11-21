@@ -4,13 +4,15 @@ $panel = 'monitors';
 $state = $agent['actual_state'] ?? 'pending';
 $typeName = fn($k) => $types[$k]['name'] ?? $k;
 $draft = $draft ?? $m['summary_prompt'];
+// The Markdown box as last sent, so a preview or a refused save keeps it as it was ticked.
+$mdDraft = isset($_POST['summary_prompt']) ? !empty($_POST['summary_markdown']) : (bool)($m['summary_markdown'] ?? 1);
 $preview = $preview ?? null;
 $runActive = $run && in_array($run['state'], ['queued', 'running'], true);
 // The monitor's address without its leading /m/, e.g. 3/township-of-langley, which the forms below post under.
 $slug = h(substr(monitor_url($m), 3));
 
 // The summary designer: templates to start from, the prompt, and a preview on a real agenda.
-$designer = function (bool $starting) use ($draft, $preview, $slug) {
+$designer = function (bool $starting) use ($draft, $mdDraft, $preview, $slug) {
     ob_start(); ?>
     <div class="vstack g-3">
       <div><span class="label"><?= icon('wand-magic-sparkles') ?> Start from a template</span>
@@ -22,6 +24,8 @@ $designer = function (bool $starting) use ($draft, $preview, $slug) {
       <div><label class="label" for="summary_prompt"><?= icon('pen-nib') ?> How summaries are written</label>
         <textarea class="input" id="summary_prompt" name="summary_prompt" rows="6" maxlength="4000" required><?= h($draft) ?></textarea>
         <p class="form-text mb-0">Write it like instructions to a helper: who's writing, the voice, how long, what to focus on and how to sign off. Summaries only ever use facts from the meeting material.</p></div>
+      <div><label class="option"><input type="checkbox" name="summary_markdown" value="1" <?= $mdDraft ? 'checked' : '' ?>> <?= icon('heading') ?> Format with Markdown</label>
+        <p class="form-text mb-0">Bold, lists and headings, shown formatted here and in email. Discord and webhooks get the Markdown itself, WhatsApp its own bold and italics, and Pushover plain text.</p></div>
       <?php if ($preview && !empty($preview['refused'])): ?>
         <div class="node is-error" style="display:block">
           <div class="node-title"><?= icon('ban') ?>Not saved</div>
@@ -34,7 +38,7 @@ $designer = function (bool $starting) use ($draft, $preview, $slug) {
           <?php if (!empty($preview['error'])): ?>
             <p class="text-muted mb-0"><?= h($preview['error']) ?></p>
           <?php else: ?>
-            <div class="summary mt-2"><?= h($preview['text']) ?></div>
+            <div class="summary md mt-2"><?= text_to_html($preview['text'], null) ?></div>
           <?php endif ?>
         </div>
       <?php endif ?>
@@ -61,7 +65,7 @@ $summaryBlock = function (string $kind, array $item) use ($versionsOf) {
     <?php foreach ($versions as $i => $s): ?>
       <div data-version="<?= $i ?>" <?= $i ? 'hidden' : '' ?>>
         <?php if ($i): ?><p class="summary-older"><?= icon('clock-rotate-left') ?> An earlier revision, from <?= h(ago($s['created_at'])) ?>. The latest is the one that's sent.</p><?php endif ?>
-        <div class="summary"><?= h($s['text']) ?></div>
+        <div class="summary md"><?= text_to_html($s['text'], null) ?></div>
         <div class="summary-prompt">
           <div class="label"><?= icon('pen-nib') ?> Instructions used</div>
           <div class="summary"><?= $s['prompt'] !== null ? h($s['prompt']) : 'Written before instructions were kept.' ?></div>
