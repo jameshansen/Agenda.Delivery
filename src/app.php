@@ -253,9 +253,9 @@ function public_address(string $url): ?string
     return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) ? $ip : null;
 }
 
-function post_json(string $url, array $body, array $headers = []): array
+function post_json(string $url, array $body, array $headers = [], int $timeout = 20): array
 {
-    return http_request('POST', $url, json_encode($body), array_merge(['Content-Type: application/json'], $headers));
+    return http_request('POST', $url, json_encode($body), array_merge(['Content-Type: application/json'], $headers), $timeout);
 }
 
 // Mail goes through the host's Postfix via sendmail, which signs it with DKIM. It always comes from mail_from.
@@ -315,7 +315,7 @@ function llm(string $system, string $user, ?int $monitorId = null, string $sourc
     [$code, $out] = post_json(rtrim(cfg('ollama_base'), '/') . '/v1/chat/completions', [
         'model'    => cfg('model'),
         'messages' => [['role' => 'system', 'content' => $system], ['role' => 'user', 'content' => $user]],
-    ], ['Authorization: Bearer ' . cfg('ollama_key')]);
+    ], ['Authorization: Bearer ' . cfg('ollama_key')], 120);  // a long agenda takes the model 15 to 30 seconds
     $j = json_decode((string)$out, true);
     if ($code !== 200 || !isset($j['choices'][0]['message']['content'])) {
         throw new RuntimeException("LLM call failed ($code)");
