@@ -11,11 +11,13 @@
 .navbar{flex-wrap:nowrap}
 .navbar .navbar-nav-open{display:flex;flex-basis:auto;flex-direction:row;align-items:center;gap:1rem;padding:0}
 .summary{white-space:pre-line}
-.summary-prompt,.summary-history{margin-top:.5rem;font-size:.875rem}
-.accordion .summary-prompt>summary,.accordion .summary-history>summary{display:list-item;list-style:revert;padding:0;font-weight:500;cursor:pointer;color:var(--o-ink)}
-.accordion .summary-prompt>summary::after,.accordion .summary-history>summary::after{content:none}
-.summary-prompt .summary{margin-top:.35rem;padding:.6rem .8rem;border-left:3px solid var(--o-blue);opacity:.85}
-.summary-old{margin-top:.75rem;padding-top:.75rem;border-top:1px solid rgba(127,127,127,.25)}
+.summary-tool .summary-prompt{display:none;margin-top:.75rem;padding:.6rem .8rem;border-left:3px solid var(--o-blue);font-size:.875rem}
+.summary-tool.show-prompt .summary-prompt{display:block}
+.summary-older{margin:0 0 .5rem;font-size:.8rem;color:var(--o-muted)}
+.summary-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-top:1rem;padding:.5rem;border-radius:var(--o-r-sm);box-shadow:var(--o-down)}
+.summary-versions,.summary-actions{display:flex;flex-wrap:wrap;gap:.4rem}
+.summary-actions{margin-inline-start:auto}
+.summary-bar .btn[aria-pressed=true]{color:var(--o-link)}
 /* Example text in fields is faint and clears as soon as the field is clicked. */
 .input::placeholder{color:var(--o-muted);opacity:.45}
 .input:focus::placeholder{color:transparent}

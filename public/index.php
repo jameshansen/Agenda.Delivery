@@ -304,7 +304,7 @@ if (preg_match('#^/m/(\d+)(?:/([a-z0-9-]*))?(?:/(\w+))?(?:/(\d+))?(?:/(\w+))?$#'
             if (too_many("preview:$uid", 30, 3600)) { flash("That's a lot of summaries in an hour. Wait a little and try again.", 'danger'); redirect("$back#$tab"); }
             try {
                 $ok = rebuild_summary($m, $kind, (int)$mm[3]) !== null;
-                flash($ok ? 'Rebuilt with the current instructions. The earlier summary is kept below it.' : 'There is no text on file to summarize for that one.', $ok ? 'success' : 'danger');
+                flash($ok ? 'Rebuilt with the current instructions. The earlier versions are a click away under it.' : 'There is no text on file to summarize for that one.', $ok ? 'success' : 'danger');
             } catch (Throwable $e) {
                 flash("The summary couldn't be written just now. Try again in a minute.", 'danger');
             }

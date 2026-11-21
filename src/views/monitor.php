@@ -50,34 +50,49 @@ $designer = function (bool $starting) use ($draft, $preview, $slug) {
     <?php return ob_get_clean();
 };
 
-// An agenda or video's summary, the instructions behind it, a rebuild button and its earlier summaries.
+// An agenda or video's summaries, newest first. Every version is on the page; the bar's buttons swap which one shows.
 $history = $history ?? [];
-$summaryBlock = function (string $kind, array $item) use ($history, $slug) {
-    $all = $history["$kind:{$item['id']}"] ?? [];
-    $current = $all[0] ?? null;
-    $earlier = array_slice($all, 1);
-    $prompt = fn(?array $s) => $s && $s['prompt'] !== null
-        ? '<details class="summary-prompt"><summary>' . icon('pen-nib') . ' Instructions used</summary><div class="summary">' . h($s['prompt']) . '</div></details>'
-        : '<p class="small text-muted mb-0">Written before instructions were kept.</p>';
+$versionsOf = fn(string $kind, array $item) => $history["$kind:{$item['id']}"]
+    ?? ($item['summary'] !== '' ? [['text' => $item['summary'], 'prompt' => null, 'created_at' => '']] : []);
+$summaryBlock = function (string $kind, array $item) use ($versionsOf) {
+    $versions = $versionsOf($kind, $item);
     ob_start(); ?>
-    <div class="summary"><?= h($item['summary'] ?: 'No summary yet.') ?></div>
-    <?php if ($current): ?><?= $prompt($current) ?><?php endif ?>
-    <form method="post" action="/m/<?= $slug ?>/rebuild/<?= (int)$item['id'] ?>/<?= $kind ?>" class="mt-2">
-      <?= csrf_field() ?>
-      <button class="btn btn-sm" data-busy="Writing a new summary, this takes a few seconds"><?= icon('rotate') ?> Rebuild with the current instructions</button>
-    </form>
-    <?php if ($earlier): ?>
-      <details class="summary-history mt-2">
-        <summary><?= icon('clock-rotate-left') ?> Earlier summaries (<?= count($earlier) ?>)</summary>
-        <?php foreach ($earlier as $e): ?>
-          <div class="summary-old">
-            <div class="small text-muted mb-1"><?= h(ago($e['created_at'])) ?> · <?= h(substr($e['created_at'], 0, 16)) ?> UTC</div>
-            <div class="summary"><?= h($e['text']) ?></div>
-            <?= $prompt($e) ?>
-          </div>
-        <?php endforeach ?>
-      </details>
-    <?php endif ?>
+    <?php if (!$versions): ?><div class="summary">No summary yet.</div><?php endif ?>
+    <?php foreach ($versions as $i => $s): ?>
+      <div data-version="<?= $i ?>" <?= $i ? 'hidden' : '' ?>>
+        <?php if ($i): ?><p class="summary-older"><?= icon('clock-rotate-left') ?> An earlier version, from <?= h(ago($s['created_at'])) ?>. The latest is the one that's sent.</p><?php endif ?>
+        <div class="summary"><?= h($s['text']) ?></div>
+        <div class="summary-prompt">
+          <div class="label"><?= icon('pen-nib') ?> Instructions used</div>
+          <div class="summary"><?= $s['prompt'] !== null ? h($s['prompt']) : 'Written before instructions were kept.' ?></div>
+        </div>
+      </div>
+    <?php endforeach ?>
+    <?php return ob_get_clean();
+};
+// Under the summary: its versions, the instructions behind the one showing, Rebuild and a way to the instructions.
+$summaryBar = function (string $kind, array $item) use ($versionsOf, $slug) {
+    $versions = $versionsOf($kind, $item);
+    ob_start(); ?>
+    <div class="summary-bar">
+      <?php if (count($versions) > 1): ?>
+        <div class="summary-versions" role="group" aria-label="Versions of this summary">
+          <?php foreach ($versions as $i => $s): ?>
+            <button type="button" class="btn btn-sm" data-show-version="<?= $i ?>" aria-pressed="<?= $i ? 'false' : 'true' ?>" title="<?= h(substr($s['created_at'], 0, 16)) ?> UTC">v<?= count($versions) - $i ?> · <?= $i ? h(ago($s['created_at'])) : 'latest' ?></button>
+          <?php endforeach ?>
+        </div>
+      <?php endif ?>
+      <div class="summary-actions">
+        <?php if ($versions): ?>
+          <button type="button" class="btn btn-sm btn-ghost" data-toggle-prompt aria-pressed="false"><?= icon('eye') ?> Instructions used</button>
+        <?php endif ?>
+        <form method="post" action="/m/<?= $slug ?>/rebuild/<?= (int)$item['id'] ?>/<?= $kind ?>">
+          <?= csrf_field() ?>
+          <button class="btn btn-sm" title="Write a new version with the current instructions" data-busy="Rebuilding"><?= icon('rotate') ?> Rebuild</button>
+        </form>
+        <button type="button" class="btn btn-sm" data-goto-tab="#t-summary"><?= icon('pen-nib') ?> Edit instructions</button>
+      </div>
+    </div>
     <?php return ob_get_clean();
 };
 $opened = (string)($_GET['open'] ?? '');
@@ -173,9 +188,10 @@ $typeBoxes = function (array $checked) use ($types) {
       <?php foreach ($agendas as $i => $a): ?>
         <details <?= ($opened === '' && $i === 0) || $opened === 'agenda-' . $a['id'] ? 'open' : '' ?>>
           <summary><?= h($a['title']) ?> <span class="when"><?= h($typeName($a['meeting_type'])) ?> · <?= h($a['meeting_date'] ?? '') ?></span></summary>
-          <div class="accordion-body">
+          <div class="accordion-body summary-tool">
             <?= $summaryBlock('agenda', $a) ?>
             <p class="mt-2 mb-0"><a href="<?= href($a['url']) ?>" rel="noopener" target="_blank"><?= icon('arrow-up-right-from-square') ?> Open the agenda</a></p>
+            <?= $summaryBar('agenda', $a) ?>
           </div>
         </details>
       <?php endforeach ?>
@@ -208,10 +224,11 @@ $typeBoxes = function (array $checked) use ($types) {
       <?php foreach ($videos as $v): ?>
         <details <?= $opened === 'video-' . $v['id'] ? 'open' : '' ?>>
           <summary><?= h($v['title']) ?> <span class="when"><?= h($typeName($v['meeting_type'])) ?> · <?= h($v['meeting_date'] ?? '') ?></span></summary>
-          <div class="accordion-body">
+          <div class="accordion-body summary-tool">
             <?= $summaryBlock('video', $v) ?>
             <p class="mt-2 mb-0"><a href="<?= href($v['url']) ?>" rel="noopener" target="_blank"><?= icon('play') ?> Watch</a>
               <?php if ($v['tlen']): ?>· <a href="/m/<?= $slug ?>/transcript/<?= (int)$v['id'] ?>"><?= icon('download') ?> Download the transcript</a><?php endif ?></p>
+            <?= $summaryBar('video', $v) ?>
           </div>
         </details>
       <?php endforeach ?>

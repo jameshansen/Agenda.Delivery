@@ -170,6 +170,25 @@ addEventListener('pageshow', () => document.querySelectorAll('[aria-busy=true][d
   b.innerHTML = b.dataset.idle; b.disabled = false; b.removeAttribute('aria-busy');
 }));
 
+// An agenda or video's summary bar: a version button shows that version in place, Instructions used shows what the
+// showing version was written from, and Edit instructions opens the Summary tab with its box ready to type in.
+document.addEventListener('click', e => {
+  const version = e.target.closest('[data-show-version]'), prompt = e.target.closest('[data-toggle-prompt]'), go = e.target.closest('[data-goto-tab]');
+  if (version) {
+    const tool = version.closest('.summary-tool');
+    tool.querySelectorAll('[data-version]').forEach(el => { el.hidden = el.dataset.version !== version.dataset.showVersion; });
+    tool.querySelectorAll('[data-show-version]').forEach(b => b.setAttribute('aria-pressed', b === version));
+  }
+  if (prompt) prompt.setAttribute('aria-pressed', prompt.closest('.summary-tool').classList.toggle('show-prompt'));
+  if (go) {
+    const tab = document.querySelector(`.nav [data-tab="${go.dataset.gotoTab}"]`);
+    if (!tab) return;
+    tab.click();
+    tab.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelector(`${go.dataset.gotoTab} textarea`)?.focus({ preventScroll: true });
+  }
+});
+
 // Email colours: a preset fills the three colour boxes, "Use the colours from my Settings" puts the account's back,
 // and any change redraws the preview email from the server, so it shows the real layout.
 const colourBoxes = box => ['fg', 'bg1', 'bg2'].map(k => box.querySelector(`[name=colour_${k}]`));
