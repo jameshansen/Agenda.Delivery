@@ -15,10 +15,12 @@ function summary_templates(): array
 {
     return [
         'plain' => [
-            'name' => 'Plain language (default)',
-            'prompt' => "Write for a resident who didn't attend. Plain language, no jargon, no filler. Lead with what matters most: decisions, money, "
-                . "land use and anything a resident could speak to. Use short paragraphs or a few bullet points. "
-                . "Name the item numbers or bylaw numbers people would search for, and say what's being decided, not just the title.",
+            'name' => 'News summary (default)',
+            'prompt' => "Write 2 to 4 sentences as one flowing paragraph, like a short news item, not a report. No bullet points, headings "
+                . "or labelled sections, even as plain text: don't write \"Topic: detail\" one per line or sentence (for example "
+                . "\"Infrastructure: council approved X. Housing: council discussed Y.\"), which is a list dressed up as prose. Write it "
+                . "the way you'd describe the meeting to someone out loud, with one topic flowing into the next. Focus on the most "
+                . "significant decisions and discussions.",
         ],
         'strongtowns' => [
             'name' => 'Strong Towns topics',
