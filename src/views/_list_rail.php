@@ -17,7 +17,7 @@ $current = $current ?? 0;
   <form method="post" action="/notifications/lists" class="list-rail-new">
     <?= csrf_field() ?>
     <label class="label small" for="list_name"><?= icon('plus') ?> New list</label>
-    <input class="input" id="list_name" name="name" maxlength="60" required placeholder="Neighbourhood association">
+    <input class="input" id="list_name" name="name" maxlength="60" required placeholder="Neighbours">
     <button class="btn btn-sm btn-primary btn-block"><?= icon('plus') ?> Create list</button>
   </form>
 </aside>

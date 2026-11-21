@@ -2,11 +2,11 @@
 
 <h1 align="center">agenda.delivery</h1>
 
-<p align="center"><b>Know what's on the agenda before it's decided.</b><br>agenda.delivery watches the public meetings of councils, school boards and other organizations. Each organization you add gets its own AI agent, which reads the agendas and meeting video transcripts as they're posted, writes plain language summaries in the style you choose, keeps track of the items still working their way through, and sends the news to your email, a mailing list, a Discord channel, a WhatsApp group, your phone through Pushover, or a webhook.</p>
+<p align="center"><b>Know what's on the agenda before it's decided.</b><br>agenda.delivery watches the public meetings of councils, school boards and other organizations. Each organization you add gets its own AI agent, which reads the agendas and meeting video transcripts as they're posted, writes summaries in the voice you choose, keeps track of the items still working their way through, and sends the news to your email, a mailing list, a Discord channel, a WhatsApp group, your phone through Pushover, or a webhook.</p>
 
 <p align="center"><a href="https://agenda.delivery"><b>Use it at agenda.delivery</b></a></p>
 
-<p align="center"><img src="docs/screenshots/monitor.png" width="800" alt="A monitor's page, showing a summary of a council meeting"></p>
+<p align="center"><img src="docs/screenshots/monitor.png" width="800" alt="A monitor's page, showing a summary of a council meeting and its revisions"></p>
 
 An account is free. New accounts join with a sign-up code, or by filling in a short registration that an admin approves.
 
@@ -24,13 +24,13 @@ It's a small project running on a single $20/month server and a $20/month Ollama
 
 - **Meeting types.** While setting up, the agent works out which kinds of meetings the organization holds (regular council, public hearings, committees and so on), and you choose which ones to follow.
 - **Voices.** A voice is the set of instructions summaries are written with, covering who's writing, the tone, what to cover and how long. You can start one from a template (a short news summary with highlights, Strong Towns topics, cycling and active transportation, decisions only, housing and land use, or a short alert), change it however you like and preview it on a monitor's latest agenda. Any number of monitors can share a voice, so one edit changes all of them, and each monitor can add its own note for local details like names and spellings. New monitors use your default voice. Summaries can be written in Markdown, which shows up formatted on the site and in email, and when an item comes back to council, the summary says where it stood.
-- **Revisions.** You can rebuild the summary of any agenda or video in its current voice, and the earlier revisions stay a click away, each showing the voice it was written in. Saving a voice can also rebuild the newest summary for every monitor that uses it.
+- **Revisions.** You can rebuild the summary of any agenda or video in its current voice, and the earlier revisions stay a click away, each showing the voice it was written in, that voice's instructions at the time and any note for that monitor. Saving a voice can also rebuild the newest summary for every monitor that uses it.
 
-<p align="center"><img src="docs/screenshots/summary-designer.png" width="800" alt="The summary designer, with its templates and instructions"></p>
+<p align="center"><img src="docs/screenshots/voices.png" width="800" alt="The Voices page, with a voice open beside the list of voices"></p>
 
 - **Agendas and videos.** The agent finds each new agenda and writes its summary. Add a video page or YouTube channel and it summarizes each meeting from its captions, with members' names corrected. A new monitor's first check saves what's already posted without sending it, so you only hear about meetings that appear after you add it.
 - **Pending items.** Bylaws between readings, motions waiting on a staff report, deferred items and scheduled public hearings stay listed on the monitor's page until they're settled.
-- **Notifications.** Your own email address is always a destination, and a new monitor sends its summaries there. Add other email addresses, mailing lists, Discord webhooks, a WhatsApp group, Pushover or a JSON webhook, then choose for each monitor which destinations get its news and what each one gets, whether that's the summary, just the link, the lines that match your keywords, or the answer to your own question. Email can arrive as each update happens, or gathered into a daily or weekly roundup that's only sent when there's news. Any destination can be paused, and a history shows what was sent, what stayed quiet and what failed.
+- **Notifications.** Your own email address is always a destination, and a new monitor sends its summaries there. Add other email addresses, mailing lists, Discord webhooks, a WhatsApp group, Pushover or a JSON webhook, then choose for each monitor which destinations get its news and what each one gets, whether that's the summary, just the link, the lines that match your keywords, or the answer to your own question. Email can arrive as each update happens, or gathered into a daily or weekly roundup that's only sent when there's news. Summaries written in Markdown show up formatted in email, as Markdown in Discord and webhooks, in WhatsApp's own formatting and as plain text through Pushover. Any destination can be paused, and a history shows what was sent, what stayed quiet and what failed.
 
 <p align="center"><img src="docs/screenshots/notifications.png" width="800" alt="The Notifications page, listing destinations"></p>
 
@@ -66,9 +66,9 @@ Monitors of the same page share a site record: how the site is laid out, its mee
 
 - keeps a gateway running for every monitor, checks each one's health every 15 seconds and restarts any that stop, with a growing pause if one keeps failing
 - runs each agent every six hours at its own offset within the hour, or straight away when someone presses Check now, at most 2 at a time, and records every run in `agent_run`
-- runs every executable an agent needs, Chrome (2 at a time, in a virtual display so bot checks let it through), `pdftotext` and `yt-dlp`, with time limits, and records each in `job`
+- runs every executable an agent needs, Chrome (2 at a time, in a virtual display so bot checks let it through), `pdftotext` and `yt-dlp`, with time limits, and records each in `job`. `yt-dlp` runs one at a time with a few seconds between runs, asks YouTube for one caption track per video, and leaves YouTube alone for 15 minutes if it answers that there have been too many requests
 - keeps a WhatsApp bridge (`whatsapp/bridge.mjs`, a small Node program using Baileys) running for each WhatsApp destination, records whether it's linked, and unlinks it and deletes its session when the destination is removed
-- runs `bin/tick.php` every minute and after each run, which imports each agent's token use into `ai_usage`, sends waiting notifications (retrying a failed one for up to a day), sends the daily and weekly digests at `digest_hour` by the clock set in `timezone`, and emails the owner of a WhatsApp link that has dropped
+- runs `bin/tick.php` every minute and after each run, which imports each agent's token use into `ai_usage`, sends waiting notifications (retrying a failed one for up to a day), sends the daily and weekly roundups at `digest_hour` by the clock set in `timezone`, emails the owner of a WhatsApp link that has dropped, and rewrites queued summaries a few at a time, such as the newest agenda of each monitor using a voice that was just saved
 
 The website and `adtool` reach the service through an HTTP API on the Unix socket `/run/agenda-delivery/service.sock`: `GET /health`, `GET /agents`, `GET /agents/<key>/log`, `POST /agents/<key>/run`, `sync`, `pause` and `resume`, `DELETE /agents/<key>`, `GET /jobs` and `POST /exec`. The database holds what each agent should be doing, so if the service is down nothing is lost, and it picks up where things stand when it starts.
 
@@ -90,7 +90,7 @@ Google sign-in needs an OAuth client with the redirect URI `https://agenda.deliv
 
 ### Upgrading
 
-A new install makes every table itself. A database from an earlier version needs the files in `deploy/migrations`, each applied once in date order while the service is stopped and before the new code is installed: `sqlite3 /var/lib/agenda/agenda.db < deploy/migrations/<file>.sql`. Run the one ending in `.sh` with `sh` instead.
+A new install makes every table itself. A database from an earlier version needs the files in `deploy/migrations` that it hasn't had yet, each applied once while the service is stopped and before the new code is installed: `sqlite3 /var/lib/agenda/agenda.db < deploy/migrations/<file>.sql`, or `sh` for the one ending in `.sh`. Their names don't sort into the order they need, so apply them in this order: `notifications`, `monitor-numbers`, `branding`, `pushover`, `colours`, `whatsapp`, `whatsapp-groups`, `summary-history`, `news-default`, `news-highlights`, `summary-markdown`, `voices`, `summary-voice-name` (each starting with `2026-11-`).
 
 ## Development
 
