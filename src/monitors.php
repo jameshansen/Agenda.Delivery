@@ -307,8 +307,8 @@ const WEEKDAYS = [1 => 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', '
 function digest_label(array $t): string
 {
     $hour = date('g a', mktime((int)cfg('digest_hour'), 0, 0));
-    if ($t['digest'] === 'daily') return "Daily digest at $hour";
-    if ($t['digest'] === 'weekly') return 'Weekly digest on ' . (WEEKDAYS[(int)$t['digest_day']] ?? 'Monday') . " at $hour";
+    if ($t['digest'] === 'daily') return "Daily roundup at $hour";
+    if ($t['digest'] === 'weekly') return 'Weekly roundup on ' . (WEEKDAYS[(int)$t['digest_day']] ?? 'Monday') . " at $hour";
     return 'Sends straight away';
 }
 

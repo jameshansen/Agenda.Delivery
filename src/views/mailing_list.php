@@ -21,7 +21,7 @@ require __DIR__ . '/_notify_tabs.php';
     <p class="text-muted small mb-0">
       <?= $count('active') ?> confirmed · <?= $count('pending') ?> waiting to confirm · <?= $count('unsubscribed') ?> unsubscribed
       · <?= h(digest_label($list)) ?>
-      <?php if ($waiting): ?>· <?= $waiting ?> <?= $waiting === 1 ? 'update' : 'updates' ?> waiting for the next digest<?php endif ?>
+      <?php if ($waiting): ?>· <?= $waiting ?> <?= $waiting === 1 ? 'update' : 'updates' ?> waiting for the next roundup<?php endif ?>
     </p>
   </div>
   <div class="hstack" style="flex-wrap:wrap">
@@ -91,8 +91,8 @@ require __DIR__ . '/_notify_tabs.php';
         <div class="col-md-6"><label class="label" for="l_digest">Send</label>
           <select class="input" id="l_digest" name="digest" data-switch="digest">
             <option value="now" <?= $list['digest'] === 'now' ? 'selected' : '' ?>>Each update as it happens</option>
-            <option value="daily" <?= $list['digest'] === 'daily' ? 'selected' : '' ?>>One email a day</option>
-            <option value="weekly" <?= $list['digest'] === 'weekly' ? 'selected' : '' ?>>One email a week</option>
+            <option value="daily" <?= $list['digest'] === 'daily' ? 'selected' : '' ?>>Daily roundup, only when there's news</option>
+            <option value="weekly" <?= $list['digest'] === 'weekly' ? 'selected' : '' ?>>Weekly roundup, only when there's news</option>
           </select></div>
         <div class="col-md-6" data-when="digest=weekly" <?= $list['digest'] === 'weekly' ? '' : 'hidden' ?>><label class="label" for="l_day">On</label>
           <select class="input" id="l_day" name="digest_day">

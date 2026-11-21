@@ -6,7 +6,7 @@ $kinds = destination_kinds();
 $lists = array_values(array_filter($targets, fn($t) => $t['kind'] === 'list'));
 $others = array_values(array_filter($targets, fn($t) => $t['kind'] !== 'list'));
 $plural = fn(int $n, string $one, string $many) => "$n " . ($n === 1 ? $one : $many);
-$stateLabels = ['sent' => 'Sent', 'quiet' => 'Nothing matched', 'queued' => 'In the next digest', 'skipped' => 'Not sent', 'failed' => 'Failed'];
+$stateLabels = ['sent' => 'Sent', 'quiet' => 'Nothing matched', 'queued' => 'In the next roundup', 'skipped' => 'Not sent', 'failed' => 'Failed'];
 $stateColours = ['sent' => 'var(--o-mint)', 'quiet' => 'var(--o-secondary)', 'queued' => 'var(--o-blue)', 'skipped' => 'var(--o-yellow)', 'failed' => 'var(--o-red)'];
 $quiet = array_filter($monitors, fn($m) => !in_array($m['name'], array_column($rules, 'monitor'), true));
 
@@ -35,7 +35,7 @@ $pauseButton = function (array $t) {
               <?= h($t['kind'] === 'whatsapp' ? ($t['address'] !== '' ? 'Sends to ' . ($t['wa_group'] !== '' ? $t['wa_group'] : 'a group') : 'No group chosen yet') : ($t['kind'] === 'email' ? $t['address'] : ($t['kind'] === 'pushover' ? 'User key ' . substr($t['address'], 0, 4) . '…' . substr($t['address'], -3) . ($t['token'] !== '' ? ', own app token' : '') : preg_replace('#(/api/webhooks/\d+/).+#', '$1…', $t['address'])))) ?>
               <?php if (in_array($t['kind'], ['email', 'list'], true)): ?>· <?= h(digest_label($t)) ?><?php endif ?>
               · used by <?= $plural((int)$t['uses'], 'notification', 'notifications') ?>
-              <?php if ($t['waiting']): ?>· <?= $plural((int)$t['waiting'], 'update', 'updates') ?> waiting for the next digest<?php endif ?>
+              <?php if ($t['waiting']): ?>· <?= $plural((int)$t['waiting'], 'update', 'updates') ?> waiting for the next roundup<?php endif ?>
               <?php if ($t['last_sent']): ?>· last sent <?= h(ago($t['last_sent'])) ?><?php endif ?>
             </div>
           </div>
@@ -58,8 +58,8 @@ $pauseButton = function (array $t) {
                 <div class="col-md-4"><label class="label" for="digest-<?= (int)$t['id'] ?>">Send</label>
                   <select class="input" id="digest-<?= (int)$t['id'] ?>" name="digest" data-switch="digest">
                     <option value="now" <?= $t['digest'] === 'now' ? 'selected' : '' ?>>Each update as it happens</option>
-                    <option value="daily" <?= $t['digest'] === 'daily' ? 'selected' : '' ?>>One email a day</option>
-                    <option value="weekly" <?= $t['digest'] === 'weekly' ? 'selected' : '' ?>>One email a week</option>
+                    <option value="daily" <?= $t['digest'] === 'daily' ? 'selected' : '' ?>>Daily roundup, only when there's news</option>
+                    <option value="weekly" <?= $t['digest'] === 'weekly' ? 'selected' : '' ?>>Weekly roundup, only when there's news</option>
                   </select></div>
                 <div class="col-md-4" data-when="digest=weekly" <?= $t['digest'] === 'weekly' ? '' : 'hidden' ?>><label class="label" for="day-<?= (int)$t['id'] ?>">On</label>
                   <select class="input" id="day-<?= (int)$t['id'] ?>" name="digest_day">
