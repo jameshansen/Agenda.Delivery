@@ -186,3 +186,4 @@ main.is-loading{opacity:.55;transition:opacity .15s .1s;pointer-events:none}
 .wa-qr{width:220px;height:220px;padding:10px;border-radius:var(--o-r-sm);background:#fff;box-shadow:var(--o-up-sm)}
 .wa-link ol{max-width:22rem;padding-left:1.1rem}
 .node-settings .align-self-end{align-self:flex-end}
+.icon-svg{display:inline-block;width:1.25em;height:1em;vertical-align:-.125em;overflow:visible}

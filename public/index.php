@@ -541,12 +541,12 @@ if (preg_match('#^/voices(?:/(new|\d+))?(?:/(\w+))?$#', $path, $mm)) {
     $back = $voice ? "/voices/{$voice['id']}" : '/voices/new';
     if ($voice && $action === 'default') {
         make_default_voice($uid, $voice);
-        flash("{$voice['name']} is now the default voice. New monitors get it.");
+        flash("{$voice['name']} is now the default voice, so new monitors will use it.");
         redirect('/voices');
     }
     if ($voice && $action === 'delete') {
         if ($err = delete_voice($uid, $voice)) { flash($err, 'danger'); redirect('/voices'); }
-        flash("{$voice['name']} is removed. Its monitors now use the default voice.");
+        flash("{$voice['name']} has been removed, and its monitors now use the default voice.");
         redirect('/voices');
     }
     if ($action === 'preview') {
@@ -566,7 +566,7 @@ if (preg_match('#^/voices(?:/(new|\d+))?(?:/(\w+))?$#', $path, $mm)) {
         if ($err) $show(['preview' => ['title' => '', 'text' => '', 'error' => $err, 'refused' => true]]);
         $n = $action === 'rebuild' ? queue_voice_rebuilds(own_voice($uid, $id)) : 0;
         flash(match (true) { $n === 0 => 'Saved.', $n === 1 => "Saved. Its monitor's newest summary is being rewritten and shows up within a few minutes.",
-            default => "Saved. The newest summary of each of its $n monitors is being rewritten, a few each minute." });
+            default => "Saved. The newest summary for each of its $n monitors is being rewritten, a few each minute." });
         redirect("/voices/$id");
     }
     redirect($back);

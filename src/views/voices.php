@@ -9,13 +9,13 @@ $previewOn = (int)($_POST['preview_on'] ?? ($users ? (int)val('SELECT id FROM mo
 $plural = fn(int $n) => $n === 1 ? '1 monitor' : "$n monitors";
 ?>
 <?php if (!$editing): ?>
-<h2 class="section-title"><span class="chip"><?= icon('head-side-cough') ?></span>Your voices</h2>
-<p class="small text-muted prose">A voice is how summaries are written: who's writing, the tone, what to cover and how long. Give a voice to as many monitors as you like, and editing it changes them all. Each monitor can also add a note of its own under its Summary tab.</p>
+<h2 class="section-title"><span class="chip"><?= icon('head-side-talk') ?></span>Your voices</h2>
+<p class="small text-muted prose">A voice is the set of instructions your summaries are written with, like who's writing, the tone, what to cover and how long they should be. You can give one voice to as many monitors as you like and any change to it applies to all of them, while each monitor can still add a note of its own under its Summary tab.</p>
 <div class="nodes">
   <?php foreach ($voices as $v): ?>
     <div class="node" style="--c:var(--o-blue)">
       <div class="node-main">
-        <div class="node-title"><?= icon('head-side-cough') ?><a href="/voices/<?= (int)$v['id'] ?>"><?= h($v['name']) ?></a>
+        <div class="node-title"><?= icon('head-side-talk') ?><a href="/voices/<?= (int)$v['id'] ?>"><?= h($v['name']) ?></a>
           <?php if ($v['is_default']): ?><span class="badge ms-2">Default</span><?php endif ?></div>
         <div class="node-meta"><?= h(mb_strimwidth(preg_replace('/\s+/', ' ', $v['prompt']), 0, 110, '…')) ?> · <?= $v['markdown'] ? 'Markdown' : 'plain text' ?> · used by <?= $plural((int)$v['uses']) ?></div>
       </div>
@@ -35,9 +35,9 @@ $plural = fn(int $n) => $n === 1 ? '1 monitor' : "$n monitors";
 <ol class="breadcrumb"><li><a href="/voices">Your voices</a></li><li><?= $voice ? h($voice['name']) : 'New voice' ?></li></ol>
 <form method="post" class="node-add mt-0">
   <?= csrf_field() ?>
-  <h3><span class="chip" style="--c:var(--o-blue)"><?= icon('head-side-cough') ?></span><?= $voice ? 'Editing the voice' : 'A new voice' ?></h3>
+  <h3><span class="chip" style="--c:var(--o-blue)"><?= icon('head-side-talk') ?></span><?= $voice ? 'Editing the voice' : 'A new voice' ?></h3>
   <?php if ($uses > 1): ?>
-    <div class="alert alert-warning"><?= icon('circle-info') ?> <?= $uses ?> monitors use this voice. Saving changes their summaries from the next one.</div>
+    <div class="alert alert-warning"><?= icon('circle-info') ?> <?= $uses ?> monitors use this voice, so saving it changes all of their summaries from the next one onward.</div>
   <?php endif ?>
   <?php if ($users): ?>
     <p class="small text-muted">Used by <?= implode(', ', array_map(fn($u) => '<a href="' . h(monitor_url($u)) . '">' . h($u['name']) . '</a>', $users)) ?>.</p>
@@ -53,9 +53,9 @@ $plural = fn(int $n) => $n === 1 ? '1 monitor' : "$n monitors";
       </div></div>
     <div><label class="label" for="v_prompt"><?= icon('pen-nib') ?> How this voice writes</label>
       <textarea class="input" id="v_prompt" name="prompt" rows="7" maxlength="4000" required data-template-box><?= h((string)($f['prompt'] ?? '')) ?></textarea>
-      <p class="form-text mb-0">Write it like instructions to a helper: who's writing, the tone, how long, what to focus on and how to sign off. Summaries only ever use facts from the meeting material.</p></div>
+      <p class="form-text mb-0">Write it the way you'd brief a helper, covering who's writing, the tone, how long it should be, what to focus on and how to sign off. Summaries only ever use facts from the meeting material.</p></div>
     <div><label class="option"><input type="checkbox" name="markdown" value="1" <?= !empty($f['markdown']) ? 'checked' : '' ?>> <?= icon('heading') ?> Format with Markdown</label>
-      <p class="form-text mb-0">Bold, lists and headings, shown formatted on the site and in email. Discord and webhooks get the Markdown itself, WhatsApp its own bold and italics, and Pushover plain text.</p></div>
+      <p class="form-text mb-0">Adds bold, lists and headings, which show up formatted on the site and in email. Discord and webhooks get the Markdown as is, WhatsApp gets its own bold and italics, and Pushover gets plain text.</p></div>
     <?php if ($monitors): ?>
       <div><label class="label" for="v_on"><?= icon('eye') ?> Preview on</label>
         <select class="input" id="v_on" name="preview_on" style="max-width:24rem">

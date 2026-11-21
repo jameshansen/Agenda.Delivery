@@ -20,7 +20,7 @@ $slug = h(substr(monitor_url($m), 3));
 $designer = function (bool $starting) use ($voices, $voiceSel, $noteDraft, $draft, $mdDraft, $preview, $slug) {
     ob_start(); ?>
     <div class="vstack g-3">
-      <div><label class="label" for="voice"><?= icon('head-side-cough') ?> Voice</label>
+      <div><label class="label" for="voice"><?= icon('head-side-talk') ?> Voice</label>
         <div class="hstack" style="flex-wrap:wrap">
           <select class="input" id="voice" name="voice" data-switch="voice" data-voice-select style="flex:1;min-width:16rem">
             <?php foreach ($voices as $v): ?>
@@ -28,7 +28,7 @@ $designer = function (bool $starting) use ($voices, $voiceSel, $noteDraft, $draf
             <?php endforeach ?>
             <option value="own" <?= $voiceSel === 'own' ? 'selected' : '' ?>>A voice just for this monitor</option>
           </select>
-          <a class="btn" href="/voices/<?= h($voiceSel) ?>" data-voice-link <?= $voiceSel === 'own' ? 'hidden' : '' ?>><?= icon('head-side-cough') ?> Edit voice</a>
+          <a class="btn" href="/voices/<?= h($voiceSel) ?>" data-voice-link <?= $voiceSel === 'own' ? 'hidden' : '' ?>><?= icon('head-side-talk') ?> Edit voice</a>
         </div>
         <p class="form-text mb-0">Voices are kept under <a href="/voices">Voices</a>, where editing one changes every monitor that uses it.</p></div>
       <div class="vstack g-3" data-when="voice=own" <?= $voiceSel === 'own' ? '' : 'hidden' ?>>
@@ -40,13 +40,13 @@ $designer = function (bool $starting) use ($voices, $voiceSel, $noteDraft, $draf
           </div></div>
         <div><label class="label" for="summary_prompt"><?= icon('pen-nib') ?> How this monitor's summaries are written</label>
           <textarea class="input" id="summary_prompt" name="summary_prompt" rows="6" maxlength="4000" data-template-box><?= h($draft) ?></textarea>
-          <p class="form-text mb-0">Write it like instructions to a helper: who's writing, the tone, how long, what to focus on and how to sign off. Summaries only ever use facts from the meeting material.</p></div>
+          <p class="form-text mb-0">Write it the way you'd brief a helper, covering who's writing, the tone, how long it should be, what to focus on and how to sign off. Summaries only ever use facts from the meeting material.</p></div>
         <div><label class="option"><input type="checkbox" name="summary_markdown" value="1" <?= $mdDraft ? 'checked' : '' ?>> <?= icon('heading') ?> Format with Markdown</label>
-          <p class="form-text mb-0">Bold, lists and headings, shown formatted here and in email. Discord and webhooks get the Markdown itself, WhatsApp its own bold and italics, and Pushover plain text.</p></div>
+          <p class="form-text mb-0">Adds bold, lists and headings, which show up formatted on the site and in email. Discord and webhooks get the Markdown as is, WhatsApp gets its own bold and italics, and Pushover gets plain text.</p></div>
       </div>
       <div><label class="label" for="voice_note"><?= icon('location-dot') ?> For this monitor, also</label>
         <textarea class="input" id="voice_note" name="voice_note" rows="2" maxlength="1000" placeholder="Call it the City, not Testville. Councillor Smyth is spelled with a y."><?= h($noteDraft) ?></textarea>
-        <p class="form-text mb-0">Added to the voice for this monitor only, for local details like names and spellings. Leave it empty if the voice covers everything.</p></div>
+        <p class="form-text mb-0">This is added to the voice for this monitor only, for local details like names and spellings. Leave it empty if the voice already covers everything.</p></div>
       <?php if ($preview && !empty($preview['refused'])): ?>
         <div class="node is-error" style="display:block">
           <div class="node-title"><?= icon('ban') ?>Not saved</div>
@@ -88,7 +88,7 @@ $summaryBlock = function (string $kind, array $item) use ($versionsOf) {
         <?php if ($i): ?><p class="summary-older"><?= icon('clock-rotate-left') ?> An earlier revision, from <?= h(ago($s['created_at'])) ?>. The latest is the one that's sent.</p><?php endif ?>
         <div class="summary md"><?= text_to_html($s['text'], null) ?></div>
         <div class="summary-prompt">
-          <div class="label"><?= icon('head-side-cough') ?> Voice used</div>
+          <div class="label"><?= icon('head-side-talk') ?> Voice used</div>
           <div class="summary"><?= $s['prompt'] !== null ? h($s['prompt']) : 'Written before voices were kept.' ?></div>
         </div>
       </div>
@@ -116,9 +116,9 @@ $summaryBar = function (string $kind, array $item) use ($versionsOf, $slug, $m) 
           <button class="btn btn-sm" title="Write a new revision in the current voice" data-busy="Rebuilding"><?= icon('rotate') ?> Rebuild</button>
         </form>
         <?php if ($m['voice_id']): ?>
-          <a class="btn btn-sm" href="/voices/<?= (int)$m['voice_id'] ?>"><?= icon('head-side-cough') ?> Edit voice</a>
+          <a class="btn btn-sm" href="/voices/<?= (int)$m['voice_id'] ?>"><?= icon('head-side-talk') ?> Edit voice</a>
         <?php else: ?>
-          <button type="button" class="btn btn-sm" data-goto-tab="#t-summary"><?= icon('head-side-cough') ?> Edit voice</button>
+          <button type="button" class="btn btn-sm" data-goto-tab="#t-summary"><?= icon('head-side-talk') ?> Edit voice</button>
         <?php endif ?>
       </div>
     </div>
@@ -193,7 +193,7 @@ $typeBoxes = function (array $checked) use ($types) {
     <h3><span class="chip"><?= icon('list-check') ?></span>Choose what to follow</h3>
     <p class="small text-muted">The agent found these kinds of meetings on <?= h($m['site_name']) ?>'s site. It only reads and summarizes the ones you tick. The usual council meetings are ticked to start.</p>
     <?= $typeBoxes(isset($_POST['types']) ? (array)$_POST['types'] : array_keys(array_filter($types, fn($t) => $t['default']))) ?>
-    <h3 class="mt-4"><span class="chip" style="--c:var(--o-blue)"><?= icon('head-side-cough') ?></span>Choose a voice</h3>
+    <h3 class="mt-4"><span class="chip" style="--c:var(--o-blue)"><?= icon('head-side-talk') ?></span>Choose a voice</h3>
     <?= $designer(true) ?>
   </form>
 
@@ -298,8 +298,8 @@ $typeBoxes = function (array $checked) use ($types) {
   <div class="tab-pane" id="t-summary">
     <form method="post" class="node-add mt-0">
       <?= csrf_field() ?>
-      <h3><span class="chip" style="--c:var(--o-blue)"><?= icon('head-side-cough') ?></span>Summary</h3>
-      <p class="small text-muted">Each agenda and video this monitor saves is summarized in this voice. Any agenda or video can be rebuilt in it under Agendas or Videos, which keeps its earlier revisions.</p>
+      <h3><span class="chip" style="--c:var(--o-blue)"><?= icon('head-side-talk') ?></span>Summary</h3>
+      <p class="small text-muted">Every agenda and video this monitor saves is summarized in this voice, and you can rebuild any of them in it under Agendas or Videos without losing the earlier revisions.</p>
       <?= $designer(false) ?>
     </form>
   </div>

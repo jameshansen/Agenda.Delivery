@@ -64,6 +64,11 @@ function href(?string $url): string { return preg_match('#^https?://#i', (string
 // $spin turns it while something is in progress; the spinner icon always does.
 function icon(string $name, string $set = 'solid', bool $spin = false): string
 {
+    // Our own icons are SVG files in public/icons, inlined so they take the text's colour and size like the others.
+    static $own = [];
+    if (array_key_exists($name, $own) || is_file($f = __DIR__ . "/../public/icons/$name.svg")) {
+        return $own[$name] ??= preg_replace(['/<!--.*?-->/s', '/^<svg /'], ['', '<svg class="icon-svg" aria-hidden="true" fill="currentColor" '], trim(file_get_contents($f)));
+    }
     $spin = $spin || $name === 'spinner';
     return '<i class="fa-' . $set . ' fa-' . $name . ' fa-fw' . ($spin ? ' fa-spin' : '') . '" aria-hidden="true"></i>';
 }

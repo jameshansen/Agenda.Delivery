@@ -43,7 +43,7 @@ try { localStorage.removeItem('opaliteTheme'); } catch (e) {}
       <section class="card panel" data-section="<?= h($panel) ?>">
         <div class="panel-head">
           <nav class="nav nav-tabs" aria-label="Sections">
-            <?php foreach (['monitors' => ['Monitors', '/', 'magnifying-glass'], 'notifications' => ['Notifications', '/notifications', 'bell'], 'voices' => ['Voices', '/voices', 'head-side-cough'], 'settings' => ['Settings', '/settings', 'gear']] as $key => [$label, $href, $ico]): ?>
+            <?php foreach (['monitors' => ['Monitors', '/', 'magnifying-glass'], 'notifications' => ['Notifications', '/notifications', 'bell'], 'voices' => ['Voices', '/voices', 'head-side-talk'], 'settings' => ['Settings', '/settings', 'gear']] as $key => [$label, $href, $ico]): ?>
               <a class="nav-link <?= $panel === $key ? 'active' : '' ?>" href="<?= $href ?>" <?= $panel === $key ? 'aria-current="page"' : '' ?>><?= icon($ico) ?> <?= $label ?></a>
             <?php endforeach ?>
           </nav>
@@ -61,7 +61,7 @@ try { localStorage.removeItem('opaliteTheme'); } catch (e) {}
       <?php if (member_session($me)): ?>
         <a href="/"><?= icon('magnifying-glass') ?> Monitors</a>
         <a href="/notifications"><?= icon('bell') ?> Notifications</a>
-        <a href="/voices"><?= icon('head-side-cough') ?> Voices</a>
+        <a href="/voices"><?= icon('head-side-talk') ?> Voices</a>
         <a href="/settings"><?= icon('gear') ?> Settings</a>
       <?php elseif (!$me): ?>
         <a href="/login"><?= icon('right-to-bracket') ?> Sign in</a>
