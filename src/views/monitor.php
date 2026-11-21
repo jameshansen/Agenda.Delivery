@@ -60,7 +60,7 @@ $summaryBlock = function (string $kind, array $item) use ($versionsOf) {
     <?php if (!$versions): ?><div class="summary">No summary yet.</div><?php endif ?>
     <?php foreach ($versions as $i => $s): ?>
       <div data-version="<?= $i ?>" <?= $i ? 'hidden' : '' ?>>
-        <?php if ($i): ?><p class="summary-older"><?= icon('clock-rotate-left') ?> An earlier version, from <?= h(ago($s['created_at'])) ?>. The latest is the one that's sent.</p><?php endif ?>
+        <?php if ($i): ?><p class="summary-older"><?= icon('clock-rotate-left') ?> An earlier revision, from <?= h(ago($s['created_at'])) ?>. The latest is the one that's sent.</p><?php endif ?>
         <div class="summary"><?= h($s['text']) ?></div>
         <div class="summary-prompt">
           <div class="label"><?= icon('pen-nib') ?> Instructions used</div>
@@ -76,9 +76,9 @@ $summaryBar = function (string $kind, array $item) use ($versionsOf, $slug) {
     ob_start(); ?>
     <div class="summary-bar">
       <?php if (count($versions) > 1): ?>
-        <div class="summary-versions" role="group" aria-label="Versions of this summary">
+        <div class="summary-versions" role="group" aria-label="Revisions of this summary">
           <?php foreach ($versions as $i => $s): ?>
-            <button type="button" class="btn btn-sm" data-show-version="<?= $i ?>" aria-pressed="<?= $i ? 'false' : 'true' ?>" title="<?= h(substr($s['created_at'], 0, 16)) ?> UTC">v<?= count($versions) - $i ?> · <?= $i ? h(ago($s['created_at'])) : 'latest' ?></button>
+            <button type="button" class="btn btn-sm" data-show-version="<?= $i ?>" aria-pressed="<?= $i ? 'false' : 'true' ?>" title="<?= h(substr($s['created_at'], 0, 16)) ?> UTC">rev.<?= count($versions) - $i ?> · <?= $i ? h(ago($s['created_at'])) : 'latest' ?></button>
           <?php endforeach ?>
         </div>
       <?php endif ?>
@@ -88,7 +88,7 @@ $summaryBar = function (string $kind, array $item) use ($versionsOf, $slug) {
         <?php endif ?>
         <form method="post" action="/m/<?= $slug ?>/rebuild/<?= (int)$item['id'] ?>/<?= $kind ?>">
           <?= csrf_field() ?>
-          <button class="btn btn-sm" title="Write a new version with the current instructions" data-busy="Rebuilding"><?= icon('rotate') ?> Rebuild</button>
+          <button class="btn btn-sm" title="Write a new revision with the current instructions" data-busy="Rebuilding"><?= icon('rotate') ?> Rebuild</button>
         </form>
         <button type="button" class="btn btn-sm" data-goto-tab="#t-summary"><?= icon('pen-nib') ?> Edit instructions</button>
       </div>
