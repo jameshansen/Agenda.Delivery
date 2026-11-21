@@ -307,17 +307,14 @@ function transcript(string $url): string
         $dir = scratch() . '/vtt-' . bin2hex(random_bytes(4));
         mkdir($dir);
         try {
-            // Only the original-language and English tracks; asking for every translation trips YouTube's rate limit.
-            try {
-                yt_dlp(['--skip-download', '--write-subs', '--write-auto-subs', '--sub-langs', 'en-orig,en', '--sub-format', 'vtt', '-o', "$dir/v", $url]);
-            } catch (RuntimeException $e) {
-                // One track failing is fine as long as another arrived.
-                if (!glob("$dir/*.vtt")) throw $e;
-            }
+            // One English track per video, since each track is another request and YouTube limits how many it answers.
+            // "en" is the captions a person wrote when there are some, and otherwise the automatic ones; "en-orig" is
+            // asked for only when a video has no "en" track at all.
+            $get = fn(string $lang) => yt_dlp(['--skip-download', '--write-subs', '--write-auto-subs', '--sub-langs', $lang, '--sub-format', 'vtt', '-o', "$dir/v", $url]);
+            $get('en');
+            if (!glob("$dir/*.vtt")) $get('en-orig');
             $files = glob("$dir/*.vtt");
             if (!$files) throw new RuntimeException('this video has no captions');
-            // Prefer captions a person wrote over the automatic ones.
-            usort($files, fn($a, $b) => (int)str_contains($a, '-orig') - (int)str_contains($b, '-orig'));
             $text = correct_names(vtt_to_text((string)file_get_contents($files[0])), array_filter(explode("\n", current_monitor()['members'])));
         } finally {
             array_map('unlink', glob("$dir/*") ?: []);

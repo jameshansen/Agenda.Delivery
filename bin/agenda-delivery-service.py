@@ -558,7 +558,12 @@ def do_run(run_id: int, mid: int) -> None:
 SLOTS: "queue.Queue[int]" = queue.Queue()
 for _slot in range(BROWSER_SLOTS):
     SLOTS.put(_slot)
-LIMITS = {"pdftotext": threading.BoundedSemaphore(2), "yt-dlp": threading.BoundedSemaphore(2)}
+LIMITS = {"pdftotext": threading.BoundedSemaphore(2), "yt-dlp": threading.BoundedSemaphore(1)}
+# YouTube answers too many requests from one address with HTTP 429, so yt-dlp runs one at a time with a gap between
+# runs, and after a 429 every yt-dlp job waits out a cool-down instead of asking again. The agent retries on its next run.
+YT_GAP = 8            # seconds between one yt-dlp run starting and the next
+YT_COOLDOWN = 900     # seconds to leave YouTube alone after it says 429
+YT = {"last": 0.0, "until": 0.0}
 XVFB = shutil.which("xvfb-run", path=PATH)
 YTDLP = shutil.which("yt-dlp", path=PATH) or "yt-dlp"
 
@@ -579,6 +584,11 @@ def run_tool(tool: str, args: list, mid: int | None, target: str) -> dict:
             held = LIMITS[tool].acquire(timeout=JOB_WAIT)
             if not held:
                 raise TimeoutError(f"{tool} is busy, try again later")
+            if tool == "yt-dlp":
+                if time.time() < YT["until"]:
+                    raise RuntimeError(f"YouTube asked for fewer requests, so videos wait until {time.strftime('%H:%M', time.localtime(YT['until']))}. Try again after that")
+                time.sleep(max(0.0, YT["last"] + YT_GAP - time.time()))
+                YT["last"] = time.time()
         ex("UPDATE job SET state = 'running', slot = ?, started_at = ? WHERE id = ?", (slot, now(), job))
         argv, timeout = tool_argv(tool, args, slot)
         proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
@@ -589,7 +599,12 @@ def run_tool(tool: str, args: list, mid: int | None, target: str) -> dict:
             stop_group(proc, grace=2)
             out, err = b"", f"{tool} took longer than {timeout}s".encode()
             proc.returncode = 124
-        result = {"exit": proc.returncode, "stdout": out.decode("utf-8", "replace"), "stderr": err.decode("utf-8", "replace")}
+        # yt-dlp's notice about this Python version comes with every run and isn't about the job.
+        err_text = "\n".join(l for l in err.decode("utf-8", "replace").splitlines() if not l.startswith("Deprecated Feature:"))
+        result = {"exit": proc.returncode, "stdout": out.decode("utf-8", "replace"), "stderr": err_text}
+        if tool == "yt-dlp" and "HTTP Error 429" in err_text:
+            YT["until"] = time.time() + YT_COOLDOWN
+            log(f"YouTube said 429, pausing yt-dlp for {YT_COOLDOWN // 60} minutes")
     except Exception as e:
         result = {"exit": 1, "stdout": "", "stderr": str(e)}
     finally:
@@ -622,7 +637,7 @@ def tool_argv(tool: str, args: list, slot: int | None) -> tuple[list, int]:
         if not os.path.isfile(args[0]):
             raise ValueError("pdftotext needs a file")
         return ["pdftotext", "-layout", "-l", "80", args[0], "-"], 60
-    return [YTDLP, "--no-warnings"] + args, 180
+    return [YTDLP, "--no-warnings", "--sleep-requests", "1", "--sleep-subtitles", "2"] + args, 180
 
 
 # ---- housekeeping --------------------------------------------------------------
