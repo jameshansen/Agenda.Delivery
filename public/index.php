@@ -532,10 +532,12 @@ if (preg_match('#^/voices(?:/(new|\d+))?(?:/(\w+))?$#', $path, $mm)) {
     $voice = ctype_digit($which) ? own_voice($uid, (int)$which) : null;
     if (ctype_digit($which) && !$voice) { http_response_code(404); render('not_found'); exit; }
     $show = function (array $extra = []) use ($uid, $voice, $which) {
-        render('voices', $extra + ['voices' => user_voices($uid), 'voice' => $voice, 'editing' => $which !== '', 'monitors' => user_monitors($uid),
+        render('voices', $extra + ['voices' => user_voices($uid), 'voice' => $voice, 'monitors' => user_monitors($uid),
             'users' => $voice ? rows('SELECT num, name FROM monitor WHERE voice_id = ? ORDER BY name COLLATE NOCASE', [$voice['id']]) : []]);
         exit;
     };
+    // The Voices tab opens on the default voice.
+    if (!$post && $which === '') redirect('/voices/' . default_voice($uid)['id']);
     if (!$post) $show();
     $action = $mm[2] ?? '';
     $back = $voice ? "/voices/{$voice['id']}" : '/voices/new';

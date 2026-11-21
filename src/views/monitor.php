@@ -41,8 +41,8 @@ $designer = function (bool $starting) use ($voices, $voiceSel, $noteDraft, $draf
         <div><label class="label" for="summary_prompt"><?= icon('pen-nib') ?> How this monitor's summaries are written</label>
           <textarea class="input" id="summary_prompt" name="summary_prompt" rows="6" maxlength="4000" data-template-box><?= h($draft) ?></textarea>
           <p class="form-text mb-0">Write it the way you'd brief a helper, covering who's writing, the tone, how long it should be, what to focus on and how to sign off. Summaries only ever use facts from the meeting material.</p></div>
-        <div><label class="option"><input type="checkbox" name="summary_markdown" value="1" <?= $mdDraft ? 'checked' : '' ?>> <?= icon('heading') ?> Format with Markdown</label>
-          <p class="form-text mb-0">Adds bold, lists and headings, which show up formatted on the site and in email. Discord and webhooks get the Markdown as is, WhatsApp gets its own bold and italics, and Pushover gets plain text.</p></div>
+        <div><label class="option option-solo option-stack"><input type="checkbox" name="summary_markdown" value="1" <?= $mdDraft ? 'checked' : '' ?>>
+          <span class="option-text"><span><?= icon('pen-clip') ?> Output Formatted Text</span><span class="option-hint">Adds bold, lists and headings.</span></span></label></div>
       </div>
       <div><label class="label" for="voice_note"><?= icon('location-dot') ?> For this monitor, also</label>
         <textarea class="input" id="voice_note" name="voice_note" rows="2" maxlength="1000" placeholder="Call it the City, not Testville. Councillor Smyth is spelled with a y."><?= h($noteDraft) ?></textarea>
