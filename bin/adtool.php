@@ -48,6 +48,7 @@ try {
     $args = expand_file_args($args);
     switch ($cmd) {
         case 'context':     echo context($monitor); break;
+        case 'fingerprint': echo fingerprint($monitor); break;
         case 'fetch':       // A link that turns out to be a PDF is read as one, not shown as page text.
             $html = fetch_html($url);
             echo str_starts_with($html, '%PDF-') ? page_of(pdf_text($url), $page) : show_page($url, $html, $page);
@@ -169,14 +170,16 @@ function cache_path(string $kind, string $url): string
 function cached(string $kind, string $url, callable $make, int $ttl = 3600): string
 {
     $f = cache_path($kind, $url);
-    if (is_file($f) && filemtime($f) > time() - $ttl && !own_earlier_copy($f)) return (string)file_get_contents($f);
+    $fresh = is_file($f) && filemtime($f) > time() - $ttl;
+    // A posted PDF or caption track doesn't change, so an agent's own copy from an earlier run is still good.
+    if ($fresh && !(in_array($kind, ['html', 'render'], true) && own_earlier_copy($f))) return (string)file_get_contents($f);
     $out = $make();
     file_put_contents($f, $out);
     file_put_contents("$f.by", (string)current_monitor()['id']);
     return $out;
 }
 
-// A page this agent fetched in an earlier run is fetched again: the cache is for agents on the same site sharing
+// A page this agent fetched in an earlier run is fetched again: the page cache is for agents on the same site sharing
 // a download, not for one agent checking twice in a row and reading its own stale copy.
 function own_earlier_copy(string $f): bool
 {
@@ -469,6 +472,24 @@ function site_status(array $m, string $what, array $args): string
 
 // ---- context -------------------------------------------------------------------
 
+// The links on the agenda page and the videos listed, as one hash. The service skips a scheduled run when it
+// matches the last full run, since nothing new can have been posted. A page built by scripts shows too few links
+// to tell, so it fails and the agent runs as usual.
+function fingerprint(array $m): string
+{
+    $links = fn(string $u) => array_keys(html_to_text(fetch_html($u), $u)[1]);
+    $parts = $links($m['agenda_url']);
+    if (count($parts) < 10) throw new RuntimeException('too few links on the agenda page to tell whether it changed');
+    if ($m['video_url']) {
+        $parts = array_merge($parts, $m['video_source'] === 'youtube'
+            ? array_map(fn($l) => strtok($l, "\t"), array_filter(explode("\n", list_videos($m['video_url']))))
+            : $links($m['video_url']));
+    }
+    $parts = array_unique($parts);
+    sort($parts);
+    return sha1(implode("\n", $parts)) . "\n";
+}
+
 function context(array $m): string
 {
     require_once __DIR__ . '/../src/monitors.php';
@@ -516,6 +537,11 @@ function context(array $m): string
     $out .= "\nVIDEOS ALREADY SAVED\n";
     foreach (rows('SELECT url, title, meeting_date FROM video WHERE monitor_id = ? ORDER BY coalesce(meeting_date, found_at) DESC LIMIT 10', [$m['id']]) as $v) {
         $out .= "{$v['meeting_date']}  {$v['title']}  {$v['url']}\n";
+    }
+    $out .= "\nDOCUMENTS YOU'VE ALREADY READ (what they say is already in what you saved and in the pending items, so don't read them again)\n";
+    foreach (rows("SELECT target, max(ended_at) AS at FROM job WHERE monitor_id = ? AND tool = 'pdftotext' AND state = 'done'
+        AND ended_at > datetime('now', '-60 days') GROUP BY target ORDER BY at DESC LIMIT 40", [$m['id']]) as $d) {
+        $out .= "{$d['at']}  {$d['target']}\n";
     }
     $out .= "\nOPEN PENDING ITEMS\n";
     foreach (rows('SELECT item_key, title, status FROM pending_item WHERE monitor_id = ? AND open = 1 ORDER BY updated_at DESC', [$m['id']]) as $p) {

@@ -153,7 +153,9 @@ CREATE TABLE IF NOT EXISTS agent (
   pid            INTEGER,                          -- the gateway's process, while it runs
   started_at     TEXT,                             -- when the gateway last started
   restarts       INTEGER NOT NULL DEFAULT 0,       -- unplanned restarts since the service started it
-  rss_kb         INTEGER                           -- the gateway's memory at the last check
+  rss_kb         INTEGER,                          -- the gateway's memory at the last check
+  fingerprint    TEXT,                             -- the site's links and videos at the last full run
+  full_run_at    TEXT                              -- when the agent last ran a full check
 );
 
 -- One row per agent run: what started it, how it ended, and the agent's closing reply.
@@ -161,7 +163,7 @@ CREATE TABLE IF NOT EXISTS agent_run (
   id          INTEGER PRIMARY KEY,
   monitor_id  INTEGER NOT NULL REFERENCES monitor(id) ON DELETE CASCADE,
   trigger     TEXT NOT NULL,                -- setup | schedule | requested | repaired
-  state       TEXT NOT NULL DEFAULT 'queued',  -- queued | running | completed | failed
+  state       TEXT NOT NULL DEFAULT 'queued',  -- queued | running | completed | failed | skipped
   queued_at   TEXT NOT NULL DEFAULT (datetime('now')),
   started_at  TEXT,
   ended_at    TEXT,

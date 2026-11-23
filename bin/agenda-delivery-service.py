@@ -512,16 +512,42 @@ def run_worker() -> None:
             ex("UPDATE agent_run SET state = 'failed', ended_at = ?, error = ? WHERE id = ?", (now(), repr(e)[:500], run_id))
 
 
+def site_mark(gw: "Gateway") -> str | None:
+    """The hash of the site's links and videos from adtool fingerprint, or None when it can't tell."""
+    try:
+        out = subprocess.run([PHP, os.path.join(ROOT, "bin/adtool.php"), "fingerprint"], capture_output=True, text=True,
+                             timeout=300, env={"HOME": gw.home, "PATH": PATH, "LANG": "C.UTF-8"}, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return None
+    mark = out.stdout.strip()
+    if out.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", mark):
+        log(f"no fingerprint for {gw.slug}: {(out.stderr or out.stdout).strip()[-200:]}")
+        return None
+    return mark
+
+
 def do_run(run_id: int, mid: int) -> None:
     gw = GATEWAYS.get(mid)
     if gw is None or not gw.alive():
         ex("UPDATE agent_run SET state = 'failed', ended_at = ?, error = 'gateway not running' WHERE id = ?", (now(), run_id))
         return
     with gw.busy:
+        trigger = q("SELECT trigger FROM agent_run WHERE id = ?", (run_id,))[0]["trigger"]
+        # A scheduled check of a site whose links and videos match the last full run is skipped, so the model
+        # isn't asked to read pages that haven't changed. A full run still happens at least every FULL_RUN_EVERY
+        # hours, for anything posted without a new link.
+        mark = site_mark(gw) if trigger != "setup" else None
+        last = q("SELECT fingerprint, full_run_at FROM agent WHERE monitor_id = ?", (mid,))[0]
+        recent = (datetime.now(timezone.utc) - timedelta(hours=FULL_RUN_EVERY)).strftime("%Y-%m-%d %H:%M:%S")
+        if trigger == "schedule" and mark and mark == last["fingerprint"] and (last["full_run_at"] or "") > recent:
+            ex("UPDATE agent_run SET state = 'skipped', started_at = ?, ended_at = ?, reply = ? WHERE id = ?",
+               (now(), now(), "Nothing new on the site since the last check.", run_id))
+            ex("UPDATE agent SET last_run_end = ?, last_exit = 0, last_error = '' WHERE monitor_id = ?", (now(), mid))
+            log(f"run {run_id} for {gw.slug}: skipped, the site hasn't changed")
+            return
         ex("UPDATE agent_run SET state = 'running', started_at = ? WHERE id = ?", (now(), run_id))
         ex("UPDATE agent SET last_run_start = ? WHERE monitor_id = ?", (now(), mid))
         log(f"run {run_id} started for {gw.slug}")
-        trigger = q("SELECT trigger FROM agent_run WHERE id = ?", (run_id,))[0]["trigger"]
         text = ("This site isn't set up yet. Set it up now, following the Setup section of AGENTS.md." if trigger == "setup"
                 else "Run your scheduled check now, following AGENTS.md.")
         state, reply, error = "failed", "", ""
@@ -548,6 +574,7 @@ def do_run(run_id: int, mid: int) -> None:
         log(f"run {run_id} for {gw.slug}: {'completed' if ok else error}")
         after_run(mid, trigger)
         if ok and trigger != "setup":
+            ex("UPDATE agent SET fingerprint = ?, full_run_at = ? WHERE monitor_id = ?", (mark, now(), mid))
             ex("UPDATE monitor SET notify_from = ? WHERE id = ? AND notify_from IS NULL AND state = 'ready' AND site_id IN "
                "(SELECT id FROM site WHERE health = 'ok')", (now(), mid))
     tick()
@@ -564,6 +591,7 @@ LIMITS = {"pdftotext": threading.BoundedSemaphore(2), "yt-dlp": threading.Bounde
 YT_GAP = 8            # seconds between one yt-dlp run starting and the next
 YT_COOLDOWN = 900     # seconds to leave YouTube alone after it says 429
 YT = {"last": 0.0, "until": 0.0}
+FULL_RUN_EVERY = 24   # hours; an unchanged site still gets a full check this often
 XVFB = shutil.which("xvfb-run", path=PATH)
 YTDLP = shutil.which("yt-dlp", path=PATH) or "yt-dlp"
 
