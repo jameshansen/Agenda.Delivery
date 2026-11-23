@@ -195,7 +195,7 @@ $open = count(array_filter($reports, fn($r) => !$r['resolved_at'])); ?>
       <thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Joined</th><th>Last seen</th><th>Monitors</th><th>Notifications</th></tr></thead>
       <tbody>
       <?php foreach ($users as $u): ?>
-        <tr><td><?= h($u['email']) ?></td><td><?= h($u['name']) ?></td><td><?= h($u['status']) ?><?= $u['signup_code'] ? ' <span class="text-muted">(' . h($u['signup_code']) . ')</span>' : '' ?></td><td><?= h(substr($u['created_at'], 0, 10)) ?></td><td><?= h(ago($u['last_seen'])) ?></td><td><?= (int)$u['follows'] ?></td><td><?= (int)$u['rules'] ?></td></tr>
+        <tr><td><?= h($u['email']) ?></td><td><?= h($u['name']) ?></td><td><?= is_admin($u) ? 'admin' : ($u['status'] === 'new' ? 'sign-in only, uncompleted join' : h($u['status'])) ?><?= $u['signup_code'] ? ' <span class="text-muted">(' . h($u['signup_code']) . ')</span>' : '' ?></td><td><?= h(substr($u['created_at'], 0, 10)) ?></td><td><?= h(ago($u['last_seen'])) ?></td><td><?= (int)$u['follows'] ?></td><td><?= (int)$u['rules'] ?></td></tr>
       <?php endforeach ?>
       </tbody>
     </table></div>
